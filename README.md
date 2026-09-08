@@ -133,36 +133,36 @@ Mod+A { spawn "vellum" "toggle"; }
 
 | Input | Action |
 | --- | --- |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Shift+Z` or `Ctrl+Y` | Redo |
+| <kbd>Ctrl+Z</kbd> | Undo |
+| <kbd>Ctrl+Shift+Z</kbd> or <kbd>Ctrl+Y</kbd> | Redo |
 | Mouse back button | Undo |
 | Mouse forward button | Redo |
-| `Ctrl+A` | Select all annotations |
-| `Backspace` or `Delete` | Delete selected annotations |
-| `Escape` | Cancel, clear the selection, or leave drawing mode |
-| `Ctrl` + click in selection mode | Add or remove an annotation from the selection |
+| <kbd>Ctrl+A</kbd> | Select all annotations |
+| <kbd>Backspace</kbd> or <kbd>Delete</kbd> | Delete selected annotations |
+| <kbd>Escape</kbd> | Cancel, clear the selection, or leave drawing mode |
+| <kbd>Ctrl</kbd> + click in selection mode | Add or remove an annotation from the selection |
 | Double-click selected text | Edit it |
-| `Shift` while drawing | Constrain the shape |
-| `Alt` while drawing | Draw triangles, rectangles, and ellipses from their center |
-| `F` | Toggle shape fill or text background |
-| `Ctrl` + scroll | Change opacity |
-| `Shift` + scroll | Change roundness |
+| <kbd>Shift</kbd> while drawing | Constrain the shape |
+| <kbd>Alt</kbd> while drawing | Draw triangles, rectangles, and ellipses from their center |
+| <kbd>F</kbd> | Toggle shape fill or text background |
+| <kbd>Ctrl</kbd> + scroll | Change opacity |
+| <kbd>Shift</kbd> + scroll | Change roundness |
 | Drag a selection handle | Reshape the selection or stretch text |
-| `Shift` + drag a text handle | Resize text without stretching |
+| <kbd>Shift</kbd> + drag a text handle | Resize text without stretching |
 
 While editing text:
 
 | Input | Action |
 | --- | --- |
-| Arrow keys | Move the caret; `Ctrl+Left/Right` moves by word |
-| `Home` / `End` | Move to the line's start / end; add `Ctrl` for the whole annotation |
-| `Shift` + navigation key | Extend the text selection |
-| `Ctrl+A` | Select all text in the annotation |
-| Click / drag | Position the caret / select text; `Shift` + click extends the selection |
+| Arrow keys | Move the caret; <kbd>Ctrl+Left/Right</kbd> moves by word |
+| <kbd>Home</kbd> / <kbd>End</kbd> | Move to the line's start / end; add <kbd>Ctrl</kbd> for the whole annotation |
+| <kbd>Shift</kbd> + navigation key | Extend the text selection |
+| <kbd>Ctrl+A</kbd> | Select all text in the annotation |
+| Click / drag | Position the caret / select text; <kbd>Shift</kbd> + click extends the selection |
 | Double-click / triple-click | Select a word / line |
-| Typing, `Backspace`, or `Delete` | Replace or delete selected text |
-| `Shift+Enter` | Insert a newline |
-| `Enter` / `Escape` | Finish / cancel editing |
+| Typing, <kbd>Backspace</kbd>, or <kbd>Delete</kbd> | Replace or delete selected text |
+| <kbd>Shift+Enter</kbd> | Insert a newline |
+| <kbd>Enter</kbd> / <kbd>Escape</kbd> | Finish / cancel editing |
 
 ## Configuration
 
