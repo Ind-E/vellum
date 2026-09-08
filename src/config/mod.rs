@@ -1,0 +1,283 @@
+mod font;
+mod size;
+
+use font::FontConfig;
+pub(crate) use size::SizeRange;
+use size::{SizeRangeConfig, resolve_size_ranges};
+
+use crate::Rgba;
+use crate::cli::Cli;
+use crate::tool::Tool;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+const CONFIG_FILE: &str = "vellum/config.toml";
+const DEFAULT_PALETTE: [&str; 8] = [
+    "#E84046", "#EF8F4F", "#EED14D", "#4DD54F", "#0483FA", "#7C58EA", "#EBEBEB", "#141414",
+];
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileConfig {
+    draw_on: Option<DrawOn>,
+    default_tool: Option<String>,
+    remember_last_tool: Option<bool>,
+    stroke_size: Option<f32>,
+    #[serde(default)]
+    size_range: SizeRangeConfig,
+    default_color: Option<String>,
+    palette: Option<Vec<String>>,
+    feedback_duration_ms: Option<u64>,
+    clear_on_escape: Option<bool>,
+    default_fill_shapes: Option<bool>,
+    #[serde(default)]
+    tools: ToolDefaults,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum DrawOn {
+    #[default]
+    All,
+    Current,
+}
+
+pub(crate) type ToolDefaults = BTreeMap<Tool, PropertyDefaults>;
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PropertyDefaults {
+    pub(crate) size: Option<f32>,
+    size_range: Option<SizeRangeConfig>,
+    pub(crate) opacity: Option<f32>,
+    pub(crate) roundness: Option<f32>,
+    pub(crate) filled: Option<bool>,
+    pub(crate) background: Option<bool>,
+    font: Option<FontConfig>,
+}
+
+fn validate_tool_defaults(
+    tools: &ToolDefaults,
+    size_ranges: &BTreeMap<Tool, SizeRange>,
+) -> Result<(), String> {
+    for (&tool, defaults) in tools {
+        let prefix = format!("tools.{}", tool.name());
+        let supports_size = tool != Tool::Select;
+        if defaults.size_range.is_some() && !supports_size {
+            return Err(format!("{prefix}.size_range is not supported"));
+        }
+        match defaults.size {
+            Some(_) if !supports_size => {
+                return Err(format!("{prefix}.size is not supported"));
+            }
+            Some(size)
+                if !size_ranges
+                    .get(&tool)
+                    .is_some_and(|range| range.contains(size)) =>
+            {
+                let size_range = size_ranges
+                    .get(&tool)
+                    .expect("tools with size defaults have size ranges");
+                return Err(format!(
+                    "{prefix}.size must be between {} and {}",
+                    size_range.min(),
+                    size_range.max(),
+                ));
+            }
+            _ => {}
+        }
+        match defaults.opacity {
+            Some(_) if matches!(tool, Tool::Eraser | Tool::Select) => {
+                return Err(format!("{prefix}.opacity is not supported"));
+            }
+            Some(value) if !value.is_finite() || !(0.05..=1.0).contains(&value) => {
+                return Err(format!("{prefix}.opacity must be between 0.05 and 1.0"));
+            }
+            _ => {}
+        }
+        if defaults.roundness.is_some() && tool.default_roundness().is_none() {
+            return Err(format!("{prefix}.roundness is not supported"));
+        }
+        if let Some(value) = defaults.roundness
+            && (!value.is_finite() || !(0.0..=1.0).contains(&value))
+        {
+            return Err(format!("{prefix}.roundness must be between 0.0 and 1.0"));
+        }
+        if defaults.filled.is_some() && !tool.supports_fill() {
+            return Err(format!("{prefix}.filled is not supported"));
+        }
+        if defaults.background.is_some() && tool != Tool::Text {
+            return Err(format!("{prefix}.background is not supported"));
+        }
+        if defaults.font.is_some() && tool != Tool::Text {
+            return Err(format!("{prefix} does not support font settings"));
+        }
+    }
+    Ok(())
+}
+
+pub(super) struct Settings {
+    pub(super) draw_on: DrawOn,
+    pub(super) stroke_size: f32,
+    pub(super) size_ranges: Arc<BTreeMap<Tool, SizeRange>>,
+    pub(super) default_color: Rgba,
+    pub(super) default_tool: Tool,
+    pub(super) remember_last_tool: bool,
+    pub(super) palette: Vec<Rgba>,
+    pub(super) feedback_duration: Duration,
+    pub(super) clear_on_escape: bool,
+    pub(super) default_fill_shapes: bool,
+    pub(super) tool_defaults: ToolDefaults,
+    pub(super) text_font: crate::text::TextFont,
+}
+
+impl Settings {
+    pub(super) fn load(cli: Cli) -> Result<Self, String> {
+        let file = if cli.no_config {
+            FileConfig::default()
+        } else if let Some(path) = &cli.config {
+            read_config(path)?
+        } else {
+            read_first_config(default_config_paths())?
+        };
+
+        let size_range = file
+            .size_range
+            .resolve(&SizeRange::default())
+            .validate("size_range")?;
+        let stroke_size = match file.stroke_size {
+            Some(size) if !size_range.contains(size) => {
+                return Err(format!(
+                    "stroke_size must be between {} and {}",
+                    size_range.min(),
+                    size_range.max(),
+                ));
+            }
+            Some(size) => size,
+            None => size_range.clamp(5.0),
+        };
+
+        let default_tool = file
+            .default_tool
+            .unwrap_or_else(|| "pen".into())
+            .to_ascii_lowercase()
+            .parse()?;
+
+        let palette_text = file
+            .palette
+            .unwrap_or_else(|| DEFAULT_PALETTE.iter().map(ToString::to_string).collect());
+        if !(2..=12).contains(&palette_text.len()) {
+            return Err("palette must contain between 2 and 12 colors".into());
+        }
+        let palette = palette_text
+            .iter()
+            .enumerate()
+            .map(|(index, color)| parse_named_color(&format!("palette[{index}]"), color))
+            .collect::<Result<Vec<_>, _>>()?;
+        let default_color = match file.default_color {
+            Some(color) => {
+                let color = parse_named_color("default_color", &color)?;
+                if !palette.contains(&color) {
+                    return Err("default_color must be present in palette".into());
+                }
+                color
+            }
+            None => palette[0],
+        };
+
+        let feedback_duration_ms = file.feedback_duration_ms.unwrap_or(500);
+        if feedback_duration_ms > 60_000 {
+            return Err("feedback_duration_ms must not exceed 60000".into());
+        }
+
+        let size_ranges = Arc::new(resolve_size_ranges(
+            &file.tools,
+            &size_range,
+            &file.size_range,
+        )?);
+        validate_tool_defaults(&file.tools, &size_ranges)?;
+        let text_font = file
+            .tools
+            .get(&Tool::Text)
+            .and_then(|defaults| defaults.font.as_ref())
+            .unwrap_or(&FontConfig::default())
+            .resolve()?;
+
+        Ok(Self {
+            draw_on: file.draw_on.unwrap_or_default(),
+            stroke_size,
+            size_ranges,
+            default_color,
+            default_tool,
+            remember_last_tool: file.remember_last_tool.unwrap_or(true),
+            palette,
+            feedback_duration: Duration::from_millis(feedback_duration_ms),
+            clear_on_escape: file.clear_on_escape.unwrap_or(false),
+            default_fill_shapes: file.default_fill_shapes.unwrap_or(false),
+            tool_defaults: file.tools,
+            text_font,
+        })
+    }
+}
+
+fn parse_named_color(name: &str, value: &str) -> Result<Rgba, String> {
+    value
+        .parse()
+        .map(crate::color_to_srgb)
+        .map_err(|error| format!("invalid {name} {value:?}: {error}"))
+}
+
+fn read_config(path: &Path) -> Result<FileConfig, String> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    parse_config(path, &contents)
+}
+
+fn read_optional_config(path: &Path) -> Result<Option<FileConfig>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => parse_config(path, &contents).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("could not read {}: {error}", path.display())),
+    }
+}
+
+fn parse_config(path: &Path, contents: &str) -> Result<FileConfig, String> {
+    toml::from_str(contents).map_err(|error| format!("invalid {}: {error}", path.display()))
+}
+
+fn read_first_config(paths: impl IntoIterator<Item = PathBuf>) -> Result<FileConfig, String> {
+    for path in paths {
+        if let Some(config) = read_optional_config(&path)? {
+            return Ok(config);
+        }
+    }
+    Ok(FileConfig::default())
+}
+
+fn default_config_paths() -> Vec<PathBuf> {
+    let user = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+                .map(|path| path.join(".config"))
+        });
+    let mut paths: Vec<_> = user
+        .into_iter()
+        .map(|path| path.join(CONFIG_FILE))
+        .collect();
+
+    match std::env::var_os("XDG_CONFIG_DIRS").filter(|value| !value.is_empty()) {
+        Some(dirs) => paths.extend(
+            std::env::split_paths(&dirs)
+                .filter(|path| path.is_absolute())
+                .map(|path| path.join(CONFIG_FILE)),
+        ),
+        None => paths.push(PathBuf::from("/etc/xdg").join(CONFIG_FILE)),
+    }
+    paths
+}
