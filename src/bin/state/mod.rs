@@ -1046,6 +1046,29 @@ impl Dispatch<WlCallback, OutputId> for State {
     }
 }
 
+impl Dispatch<WlCallback, ()> for State {
+    fn event(
+        state: &mut Self,
+        _callback: &WlCallback,
+        _event: <WlCallback as Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
+    ) {
+        let globals = state
+            .wayland
+            .registry
+            .data::<GlobalListContents>()
+            .unwrap()
+            .clone_list();
+        for global in globals {
+            if global.interface == WlOutput::interface().name {
+                state.add_output(global.name, global.version);
+            }
+        }
+    }
+}
+
 delegate_noop!(State: ignore ZwlrLayerShellV1);
 impl Dispatch<ZwlrLayerSurfaceV1, OutputId> for State {
     fn event(
@@ -1099,7 +1122,12 @@ impl Dispatch<ZwlrLayerSurfaceV1, OutputId> for State {
                     state.render(*output);
                 }
             }
-            Event::Closed => state.remove_output(*output),
+            Event::Closed => {
+                state.remove_output(*output);
+                // A closed layer surface does not necessarily mean its output is gone.
+                // Wait for accompanying registry removals before recreating surfaces.
+                state.wayland.display.sync(&state.qhandle, ());
+            }
             _ => {}
         }
     }
