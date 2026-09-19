@@ -4,8 +4,8 @@ mod shapes;
 
 use shapes::pixel_aligned_segment;
 pub(super) use shapes::{
-    bounds_for, geometry, pixel_aligned_point, pixel_aligned_points, rendered_segment_endpoints,
-    rounded_corner, text_bounds,
+    append_rounded_contour, bounds_for, geometry, pixel_aligned_point, pixel_aligned_points,
+    rendered_segment_endpoints, rounded_corner, text_bounds,
 };
 
 use crate::render::Geometry;

@@ -138,10 +138,7 @@ impl Geometry {
             let bounds = line.bounding_box().inflate(tolerance, tolerance);
             let hit_edge = path.segments().any(|segment| {
                 let other = segment.bounding_box();
-                bounds.x0 <= other.x1
-                    && bounds.x1 >= other.x0
-                    && bounds.y0 <= other.y1
-                    && bounds.y1 >= other.y0
+                bounds.overlaps(other)
                     && if length == 0.0 {
                         segment.nearest(line.p0, 0.1).distance_sq <= tolerance * tolerance
                     } else {

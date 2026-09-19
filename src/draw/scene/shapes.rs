@@ -416,26 +416,29 @@ fn line_path(start: Point, end: Point, width: f32, roundness: f32) -> kurbo::Bez
 
 fn rounded_polygon_path(vertices: &[Point], roundness: f32) -> kurbo::BezPath {
     let mut path = kurbo::BezPath::new();
-    if vertices.len() < 3 {
-        return path;
-    }
-    let mut corner = rounded_polygon_corner(vertices, 0, roundness);
-    path.move_to(kurbo_point(corner.0));
-    for index in 0..vertices.len() {
-        let vertex = vertices[index];
-        let (before, after) = corner;
-        if before == after {
-            path.line_to(kurbo_point(vertex));
+    let corners = vertices.iter().enumerate().map(|(index, vertex)| {
+        let (before, after) = rounded_polygon_corner(vertices, index, roundness);
+        [before, *vertex, after].map(kurbo_point)
+    });
+    append_rounded_contour(&mut path, corners);
+    path
+}
+
+pub(in crate::draw) fn append_rounded_contour(
+    path: &mut kurbo::BezPath,
+    corners: impl Iterator<Item = [kurbo::Point; 3]>,
+) {
+    for (index, [before, vertex, after]) in corners.enumerate() {
+        if index == 0 {
+            path.move_to(before);
         } else {
-            path.quad_to(kurbo_point(vertex), kurbo_point(after));
+            path.line_to(before);
         }
-        if index + 1 < vertices.len() {
-            corner = rounded_polygon_corner(vertices, index + 1, roundness);
-            path.line_to(kurbo_point(corner.0));
+        if before != vertex || after != vertex {
+            path.quad_to(vertex, after);
         }
     }
     path.close_path();
-    path
 }
 
 fn rounded_polygon_corner(vertices: &[Point], index: usize, roundness: f32) -> (Point, Point) {

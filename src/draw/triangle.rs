@@ -24,7 +24,7 @@ pub(super) fn bounds(vertices: &[Point; 3], style: Style) -> Bounds {
 
 fn outline(vertices: &[Point; 3], width: f32, roundness: f32, filled: bool) -> BezPath {
     let outer = vertices.map(|point| kurbo::Point::new(point.x as f64, point.y as f64));
-    let area = cross(outer[1] - outer[0], outer[2] - outer[0]);
+    let area = (outer[1] - outer[0]).cross(outer[2] - outer[0]);
     let scale = outer
         .iter()
         .map(|point| point.x.abs().max(point.y.abs()))
@@ -46,25 +46,11 @@ fn outline(vertices: &[Point; 3], width: f32, roundness: f32, filled: bool) -> B
 }
 
 fn add_contour(path: &mut BezPath, vertices: &[kurbo::Point; 3], roundness: f64) {
-    let roundness = roundness.clamp(0.0, 1.0);
-    if roundness <= f64::EPSILON {
-        path.move_to(vertices[0]);
-        path.line_to(vertices[1]);
-        path.line_to(vertices[2]);
-        path.close_path();
-        return;
-    }
-
-    let corners: [(kurbo::Point, kurbo::Point); 3] =
-        std::array::from_fn(|index| rounded_corner(vertices, index, roundness));
-    path.move_to(corners[0].0);
-    for index in 0..vertices.len() {
-        path.quad_to(vertices[index], corners[index].1);
-        if index + 1 < vertices.len() {
-            path.line_to(corners[index + 1].0);
-        }
-    }
-    path.close_path();
+    let corners = vertices.iter().enumerate().map(|(index, vertex)| {
+        let (before, after) = rounded_corner(vertices, index, roundness);
+        [before, *vertex, after]
+    });
+    super::scene::append_rounded_contour(path, corners);
 }
 
 fn rounded_corner(
@@ -131,16 +117,16 @@ fn inset_triangle(vertices: &[kurbo::Point; 3], width: f64) -> Option<[kurbo::Po
         let previous = (index + inner.len() - 1) % inner.len();
         let (start, direction) = lines[previous];
         let (other_start, other_direction) = lines[index];
-        let denominator = cross(direction, other_direction);
+        let denominator = direction.cross(other_direction);
         if denominator.abs() <= f64::EPSILON {
             return None;
         }
         inner[index] =
-            start + direction * (cross(other_start - start, other_direction) / denominator);
+            start + direction * ((other_start - start).cross(other_direction) / denominator);
     }
 
     let tolerance = width.max(1.0) * 1e-7;
-    let area = cross(inner[1] - inner[0], inner[2] - inner[0]);
+    let area = (inner[1] - inner[0]).cross(inner[2] - inner[0]);
     (area > tolerance * tolerance
         && inner.iter().all(|point| {
             normals
@@ -149,8 +135,4 @@ fn inset_triangle(vertices: &[kurbo::Point; 3], width: f64) -> Option<[kurbo::Po
                 .all(|(index, normal)| (*point - vertices[index]).dot(*normal) >= width - tolerance)
         }))
     .then_some(inner)
-}
-
-fn cross(first: kurbo::Vec2, second: kurbo::Vec2) -> f64 {
-    first.x * second.y - first.y * second.x
 }

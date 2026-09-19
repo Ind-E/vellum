@@ -188,17 +188,22 @@ impl WgpuState {
             replay_geometry(&mut self.main_scene, geometry, target_is_srgb);
         }
 
-        let picker_viewport = picker
-            .map(|picker| {
-                self.picker.prepare(
-                    &self.device,
-                    &self.queue,
-                    &self.surface_config,
-                    picker,
-                    &viewport,
-                )
-            })
-            .transpose()?;
+        if let Some(picker) = picker {
+            self.picker.prepare(
+                &self.device,
+                &mut self.texture_bindings,
+                &mut self.main_scene,
+                &self.surface_config,
+                picker,
+                &viewport,
+            )?;
+            self.picker.render(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &self.texture_bindings,
+            )?;
+        }
 
         let swapchain_view = output
             .texture
@@ -219,16 +224,6 @@ impl WgpuState {
                 &self.texture_bindings,
             )
             .map_err(|error| format!("Vello annotation render failed: {error}"))?;
-        if let Some(viewport) = picker_viewport {
-            self.picker.render(
-                &self.device,
-                &self.queue,
-                &mut encoder,
-                &self.texture_bindings,
-                &swapchain_view,
-                viewport,
-            )?;
-        }
         self.queue.submit(Some(encoder.finish()));
         before_present();
         output.present();
@@ -236,7 +231,7 @@ impl WgpuState {
     }
 
     pub(crate) fn release_picker_target(&mut self) {
-        self.picker.release_target();
+        self.picker.release_target(&mut self.texture_bindings);
     }
 }
 
