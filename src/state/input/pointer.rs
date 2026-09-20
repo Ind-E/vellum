@@ -96,24 +96,13 @@ impl PointerState {
     }
 
     pub(in crate::state) fn refresh_cursor(&mut self, pointer: &WlPointer, cursor: Cursor) {
-        let Some(serial) = self.cursor_serial else {
-            return;
-        };
-        if self
-            .current_cursor
-            .is_some_and(|current| current.same_compositor_cursor(cursor))
-        {
-            return;
-        }
-        let Some(device) = &self.cursor_shape_device else {
-            return;
-        };
-        match cursor {
-            Cursor::Hidden => pointer.set_cursor(serial, None, 0, 0),
-            Cursor::Shape(hint) => device.set_shape(serial, cursor_shape(hint)),
-            Cursor::Tool(_) => pointer.set_cursor(serial, None, 0, 0),
-        }
-        self.current_cursor = Some(cursor);
+        update_cursor(
+            self.cursor_serial,
+            self.cursor_shape_device.as_ref(),
+            &mut self.current_cursor,
+            cursor,
+            |serial| pointer.set_cursor(serial, None, 0, 0),
+        );
     }
 
     pub(in crate::state) fn clear_pointer(&mut self) {
@@ -499,7 +488,27 @@ impl Dispatch<WlPointer, (), State> for PointerState {
     }
 }
 
-pub(super) fn cursor_shape(hint: CursorHint) -> Shape {
+pub(super) fn update_cursor(
+    serial: Option<u32>,
+    device: Option<&WpCursorShapeDeviceV1>,
+    current: &mut Option<Cursor>,
+    cursor: Cursor,
+    hide: impl FnOnce(u32),
+) {
+    let (Some(serial), Some(device)) = (serial, device) else {
+        return;
+    };
+    if current.is_some_and(|current| current.same_compositor_cursor(cursor)) {
+        return;
+    }
+    match cursor {
+        Cursor::Shape(hint) => device.set_shape(serial, cursor_shape(hint)),
+        Cursor::Hidden | Cursor::Tool(_) => hide(serial),
+    }
+    *current = Some(cursor);
+}
+
+fn cursor_shape(hint: CursorHint) -> Shape {
     match hint {
         CursorHint::Crosshair => Shape::Crosshair,
         CursorHint::Move => Shape::Move,

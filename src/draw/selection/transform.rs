@@ -22,17 +22,9 @@ pub(in crate::draw) fn resize(
         }
         (ElementKind::Segment { points, arrow }, handle @ (Handle::Start | Handle::End)) => {
             let mut points = *points;
-            match handle {
-                Handle::Start => {
-                    points[0] = constrained_endpoint(points[1], points[0] + delta, modifiers.shift);
-                }
-                Handle::End => {
-                    let start = points[0];
-                    let end = points[1] + delta;
-                    points[1] = constrained_endpoint(start, end, modifiers.shift);
-                }
-                _ => unreachable!(),
-            }
+            let index = usize::from(handle == Handle::End);
+            points[index] =
+                constrained_endpoint(points[1 - index], points[index] + delta, modifiers.shift);
             ElementKind::Segment {
                 points,
                 arrow: *arrow,

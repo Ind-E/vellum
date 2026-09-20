@@ -173,20 +173,7 @@ impl Editor {
                 })
             });
         }
-        if self.tool == Tool::Text {
-            let properties = self
-                .properties_mut(Tool::Text)
-                .expect("text has adjustable properties");
-            properties.filled = !properties.filled;
-            let background = properties.filled;
-            self.sync_active_style();
-            return Adjustment {
-                changed: true,
-                feedback: Some(background_label(background)),
-                ..Default::default()
-            };
-        }
-        if !self.tool.supports_fill() {
+        if !self.tool.supports_fill() && self.tool != Tool::Text {
             return Adjustment::default();
         }
         let properties = self
@@ -197,7 +184,11 @@ impl Editor {
         self.sync_active_style();
         Adjustment {
             changed: true,
-            feedback: Some(fill_label(filled)),
+            feedback: Some(if self.tool == Tool::Text {
+                background_label(filled)
+            } else {
+                fill_label(filled)
+            }),
             ..Default::default()
         }
     }

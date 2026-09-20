@@ -27,7 +27,7 @@ use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_seat_v2::EVT_PAD_ADDE
 use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_seat_v2::EVT_TABLET_ADDED_OPCODE;
 use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_seat_v2::EVT_TOOL_ADDED_OPCODE;
 
-use super::pointer::cursor_shape;
+use super::pointer::update_cursor;
 use super::short_click;
 use crate::OutputId;
 use crate::draw::{Cursor, DrawState, Point, ToolOverride};
@@ -80,24 +80,13 @@ impl ToolState {
     }
 
     fn refresh_cursor(&mut self, tablet_tool: &ZwpTabletToolV2, cursor: Cursor) {
-        let Some(serial) = self.cursor_serial else {
-            return;
-        };
-        if self
-            .current_cursor
-            .is_some_and(|current| current.same_compositor_cursor(cursor))
-        {
-            return;
-        }
-        let Some(device) = &self.cursor_shape_device else {
-            return;
-        };
-        match cursor {
-            Cursor::Hidden => tablet_tool.set_cursor(serial, None, 0, 0),
-            Cursor::Shape(hint) => device.set_shape(serial, cursor_shape(hint)),
-            Cursor::Tool(_) => tablet_tool.set_cursor(serial, None, 0, 0),
-        }
-        self.current_cursor = Some(cursor);
+        update_cursor(
+            self.cursor_serial,
+            self.cursor_shape_device.as_ref(),
+            &mut self.current_cursor,
+            cursor,
+            |serial| tablet_tool.set_cursor(serial, None, 0, 0),
+        );
     }
 }
 
