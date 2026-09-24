@@ -14,91 +14,71 @@ const UNDO_KEY: &str = "z";
 const REDO_KEY: &str = "y";
 const TOGGLE_FILL_KEY: &str = "f";
 
-enum LogicalKey {
-    Character(String),
-    Escape,
-    Delete,
-    Backspace,
-    Enter,
-    ArrowLeft,
-    ArrowRight,
-    ArrowUp,
-    ArrowDown,
-    Home,
-    End,
-    Other,
-}
-
 struct KeyChord {
-    key: LogicalKey,
+    key: u32,
+    text: String,
     modifiers: Modifiers,
     composed: bool,
 }
 
 fn resolve_keybinding(chord: &KeyChord, editing_text: bool) -> Option<Action> {
-    use LogicalKey::*;
+    use xkb::keysyms as key;
 
+    let text = &chord.text;
     if editing_text {
-        let movement = match &chord.key {
-            ArrowLeft if chord.modifiers.ctrl => Some(CursorMove::WordLeft),
-            ArrowLeft => Some(CursorMove::Left),
-            ArrowRight if chord.modifiers.ctrl => Some(CursorMove::WordRight),
-            ArrowRight => Some(CursorMove::Right),
-            ArrowUp => Some(CursorMove::Up),
-            ArrowDown => Some(CursorMove::Down),
-            Home if chord.modifiers.ctrl => Some(CursorMove::TextStart),
-            Home => Some(CursorMove::Home),
-            End if chord.modifiers.ctrl => Some(CursorMove::TextEnd),
-            End => Some(CursorMove::End),
+        let movement = match chord.key {
+            key::KEY_Left if chord.modifiers.ctrl => Some(CursorMove::WordLeft),
+            key::KEY_Left => Some(CursorMove::Left),
+            key::KEY_Right if chord.modifiers.ctrl => Some(CursorMove::WordRight),
+            key::KEY_Right => Some(CursorMove::Right),
+            key::KEY_Up => Some(CursorMove::Up),
+            key::KEY_Down => Some(CursorMove::Down),
+            key::KEY_Home if chord.modifiers.ctrl => Some(CursorMove::TextStart),
+            key::KEY_Home => Some(CursorMove::Home),
+            key::KEY_End if chord.modifiers.ctrl => Some(CursorMove::TextEnd),
+            key::KEY_End => Some(CursorMove::End),
             _ => None,
         };
         if let Some(movement) = movement {
             return Some(Action::MoveCursor(movement, chord.modifiers.shift));
         }
-        return match &chord.key {
-            Escape => Some(Action::Cancel),
-            Delete => Some(Action::Delete),
-            Backspace if chord.modifiers.ctrl => Some(Action::BackspaceWord),
-            Backspace => Some(Action::Backspace),
-            Enter if chord.modifiers.shift => Some(Action::InsertText("\n".into())),
-            Enter => Some(Action::CommitText),
-            Character(text)
-                if chord.modifiers.ctrl && text.eq_ignore_ascii_case(SELECT_ALL_KEY) =>
-            {
+        return match chord.key {
+            key::KEY_Escape => Some(Action::Cancel),
+            key::KEY_Delete => Some(Action::Delete),
+            key::KEY_BackSpace if chord.modifiers.ctrl => Some(Action::BackspaceWord),
+            key::KEY_BackSpace => Some(Action::Backspace),
+            key::KEY_Return | key::KEY_KP_Enter if chord.modifiers.shift => {
+                Some(Action::InsertText("\n".into()))
+            }
+            key::KEY_Return | key::KEY_KP_Enter => Some(Action::CommitText),
+            _ if chord.modifiers.ctrl && text.eq_ignore_ascii_case(SELECT_ALL_KEY) => {
                 Some(Action::SelectAll)
             }
-            Character(text) if !chord.modifiers.ctrl && !text.chars().any(char::is_control) => {
+            _ if !chord.modifiers.ctrl
+                && !text.is_empty()
+                && !text.chars().any(char::is_control) =>
+            {
                 Some(Action::InsertText(text.clone()))
             }
             _ => None,
         };
     }
 
-    match &chord.key {
-        Escape => Some(Action::Cancel),
-        Delete | Backspace => Some(Action::Delete),
-        Character(character)
-            if chord.modifiers.ctrl && character.eq_ignore_ascii_case(SELECT_ALL_KEY) =>
-        {
+    match chord.key {
+        key::KEY_Escape => Some(Action::Cancel),
+        key::KEY_Delete | key::KEY_BackSpace => Some(Action::Delete),
+        _ if chord.modifiers.ctrl && text.eq_ignore_ascii_case(SELECT_ALL_KEY) => {
             Some(Action::SelectAll)
         }
-        Character(character)
-            if chord.modifiers.ctrl && character.eq_ignore_ascii_case(REDO_KEY) =>
-        {
-            Some(Action::Redo)
-        }
-        Character(character)
-            if chord.modifiers.ctrl && character.eq_ignore_ascii_case(UNDO_KEY) =>
-        {
+        _ if chord.modifiers.ctrl && text.eq_ignore_ascii_case(REDO_KEY) => Some(Action::Redo),
+        _ if chord.modifiers.ctrl && text.eq_ignore_ascii_case(UNDO_KEY) => {
             Some(if chord.modifiers.shift {
                 Action::Redo
             } else {
                 Action::Undo
             })
         }
-        Character(character)
-            if !chord.modifiers.ctrl && character.eq_ignore_ascii_case(TOGGLE_FILL_KEY) =>
-        {
+        _ if !chord.modifiers.ctrl && text.eq_ignore_ascii_case(TOGGLE_FILL_KEY) => {
             Some(Action::ToggleFill)
         }
         _ => None,
@@ -195,24 +175,22 @@ impl KeyboardState {
         let keysym = state.key_get_one_sym(keycode);
         let modifiers = self.modifiers();
         let mut composed = false;
-        let key = match keysym {
-            value if value.raw() == xkb::keysyms::KEY_Escape => LogicalKey::Escape,
-            value if value.raw() == xkb::keysyms::KEY_Delete => LogicalKey::Delete,
-            value if value.raw() == xkb::keysyms::KEY_BackSpace => LogicalKey::Backspace,
-            value
-                if matches!(
-                    value.raw(),
-                    xkb::keysyms::KEY_Return | xkb::keysyms::KEY_KP_Enter
-                ) =>
-            {
-                LogicalKey::Enter
+        use xkb::keysyms as key;
+        let text = match keysym.raw() {
+            key::KEY_Escape
+            | key::KEY_Delete
+            | key::KEY_BackSpace
+            | key::KEY_Return
+            | key::KEY_KP_Enter
+            | key::KEY_Left
+            | key::KEY_Right
+            | key::KEY_Up
+            | key::KEY_Down
+            | key::KEY_Home
+            | key::KEY_End => {
+                self.reset_compose();
+                String::new()
             }
-            value if value.raw() == xkb::keysyms::KEY_Left => LogicalKey::ArrowLeft,
-            value if value.raw() == xkb::keysyms::KEY_Right => LogicalKey::ArrowRight,
-            value if value.raw() == xkb::keysyms::KEY_Up => LogicalKey::ArrowUp,
-            value if value.raw() == xkb::keysyms::KEY_Down => LogicalKey::ArrowDown,
-            value if value.raw() == xkb::keysyms::KEY_Home => LogicalKey::Home,
-            value if value.raw() == xkb::keysyms::KEY_End => LogicalKey::End,
             _ => {
                 let mut text = if modifiers.ctrl {
                     xkb::keysym_to_utf8(keysym)
@@ -239,21 +217,15 @@ impl KeyboardState {
                         xkb::compose::Status::Nothing => {}
                     }
                 }
-                if text.is_empty() {
-                    LogicalKey::Other
-                } else {
-                    LogicalKey::Character(text)
-                }
+                text
             }
         };
-        if modifiers.ctrl
-            || modifiers.alt
-            || !matches!(key, LogicalKey::Character(_) | LogicalKey::Other)
-        {
+        if modifiers.ctrl || modifiers.alt {
             self.reset_compose();
         }
         Some(KeyChord {
-            key,
+            key: keysym.raw(),
+            text,
             modifiers,
             composed,
         })
@@ -337,7 +309,8 @@ impl KeyboardState {
         if !chord.modifiers.ctrl
             && let Some(text) = composed_text
         {
-            chord.key = LogicalKey::Character(text);
+            chord.key = xkb::keysyms::KEY_NoSymbol;
+            chord.text = text;
         }
         resolve_keybinding(&chord, text_session.is_some())
     }
@@ -393,10 +366,10 @@ impl Dispatch<WlKeyboard, ()> for State {
                 state.keyboard.sync_text_session(session);
                 let editing = state.draw.is_editing_text();
                 let chord = state.keyboard.chord(key, editing);
-                let composed_text = chord.as_ref().and_then(|chord| match &chord.key {
-                    LogicalKey::Character(text) if chord.composed => Some(text.clone()),
-                    _ => None,
-                });
+                let composed_text = chord
+                    .as_ref()
+                    .filter(|chord| chord.composed && !chord.text.is_empty())
+                    .map(|chord| chord.text.clone());
                 let action = chord.and_then(|chord| resolve_keybinding(&chord, editing));
                 let repeatable = action
                     .as_ref()
