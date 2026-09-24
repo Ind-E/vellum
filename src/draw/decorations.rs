@@ -61,30 +61,20 @@ pub(super) fn text_caret(left: f32, top: f32, scaled_font_size: f32) -> Geometry
     let top = top + inset;
     let bottom = top + caret_height;
     let (top, bottom) = (top.min(bottom), top.max(bottom));
-    let black = [0.0, 0.0, 0.0, 1.0];
-    let white = [1.0, 1.0, 1.0, 1.0];
-    let mut geometry = Geometry::fill(
-        kurbo::Rect::new(
-            f64::from(left - 1.0),
-            f64::from(top),
-            f64::from(left + 1.0),
-            f64::from(bottom),
-        )
-        .to_path(0.1),
-        Fill::NonZero,
-        black,
-    );
-    geometry.push_fill(
-        kurbo::Rect::new(
-            f64::from(left - 0.5),
-            f64::from(top),
-            f64::from(left + 0.5),
-            f64::from(bottom),
-        )
-        .to_path(0.1),
-        Fill::NonZero,
-        white,
-    );
+    let mut geometry = Geometry::default();
+    for (half_width, color) in [(1.0, [0.0, 0.0, 0.0, 1.0]), (0.5, [1.0, 1.0, 1.0, 1.0])] {
+        geometry.push_fill(
+            kurbo::Rect::new(
+                f64::from(left - half_width),
+                f64::from(top),
+                f64::from(left + half_width),
+                f64::from(bottom),
+            )
+            .to_path(0.1),
+            Fill::NonZero,
+            color,
+        );
+    }
     geometry
 }
 
@@ -121,33 +111,24 @@ pub(super) fn text_preedit_span(
     let left = start.min(end);
     let right = start.max(end).max(left + 1.0);
     let bottom = top + line_height;
-    if style == PreeditHint::Selection {
-        return Geometry::fill(
-            kurbo::Rect::new(
-                f64::from(left),
-                f64::from(top.min(bottom)),
-                f64::from(right),
-                f64::from(top.max(bottom)),
-            )
-            .to_path(0.1),
-            Fill::NonZero,
-            [0.2, 0.45, 1.0, 0.25],
-        );
-    }
-
-    let color = match style {
-        PreeditHint::SpellingError => [1.0, 0.15, 0.1, 1.0],
-        PreeditHint::ComposeError => [1.0, 0.45, 0.05, 1.0],
-        PreeditHint::Prediction => [0.55, 0.55, 0.55, 0.8],
-        _ => [0.2, 0.45, 1.0, 1.0],
+    let (top, bottom, color) = if style == PreeditHint::Selection {
+        (top.min(bottom), top.max(bottom), [0.2, 0.45, 1.0, 0.25])
+    } else {
+        let color = match style {
+            PreeditHint::SpellingError => [1.0, 0.15, 0.1, 1.0],
+            PreeditHint::ComposeError => [1.0, 0.45, 0.05, 1.0],
+            PreeditHint::Prediction => [0.55, 0.55, 0.55, 0.8],
+            _ => [0.2, 0.45, 1.0, 1.0],
+        };
+        let baseline = bottom - 1.5;
+        (baseline, baseline + 1.5, color)
     };
-    let baseline = bottom - 1.5;
     Geometry::fill(
         kurbo::Rect::new(
             f64::from(left),
-            f64::from(baseline),
+            f64::from(top),
             f64::from(right),
-            f64::from(baseline + 1.5),
+            f64::from(bottom),
         )
         .to_path(0.1),
         Fill::NonZero,

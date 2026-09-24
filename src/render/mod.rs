@@ -19,7 +19,7 @@ pub(crate) struct Viewport {
 }
 
 pub(crate) enum SceneItem<'a> {
-    Geometry(Cow<'a, Geometry>),
+    Geometry(Cow<'a, Geometry>, [f32; 2]),
     Text(TextSpec<'a>),
 }
 
@@ -149,19 +149,15 @@ impl WgpuState {
             }
         };
 
-        let main_size = checked_target_size(
-            &self.device,
-            [self.surface_config.width, self.surface_config.height],
-            "annotation",
-        )?;
+        // Creation and resize validate these dimensions.
+        let main_size = self.size().map(|dimension| dimension as u16);
         self.main_scene.reset_and_resize(main_size[0], main_size[1]);
-        self.main_scene.set_transform(
-            Affine::scale_non_uniform(scale[0], scale[1])
-                * Affine::translate((
-                    -f64::from(viewport_origin[0]),
-                    -f64::from(viewport_origin[1]),
-                )),
-        );
+        let scene_transform = Affine::scale_non_uniform(scale[0], scale[1])
+            * Affine::translate((
+                -f64::from(viewport_origin[0]),
+                -f64::from(viewport_origin[1]),
+            ));
+        self.main_scene.set_transform(scene_transform);
         let target_is_srgb = self.surface_config.format.is_srgb();
         let mut encoder = self
             .device
@@ -177,8 +173,17 @@ impl WgpuState {
         };
         for item in items {
             match item {
-                SceneItem::Geometry(geometry) => {
-                    replay_geometry(target.scene, geometry, target_is_srgb)
+                SceneItem::Geometry(geometry, offset) => {
+                    if *offset != [0.0; 2] {
+                        target.scene.set_transform(
+                            scene_transform
+                                * Affine::translate((f64::from(offset[0]), f64::from(offset[1]))),
+                        );
+                    }
+                    replay_geometry(target.scene, geometry, target_is_srgb);
+                    if *offset != [0.0; 2] {
+                        target.scene.set_transform(scene_transform);
+                    }
                 }
                 SceneItem::Text(spec) => self.text.append_to_scene(&mut target, spec, active_text),
             }

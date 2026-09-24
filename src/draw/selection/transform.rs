@@ -250,12 +250,28 @@ fn resized_box(
     modifiers: Modifiers,
 ) -> (Point, Point) {
     let center = original_min.midpoint(original_max);
-    let point = handle_position(original_min, original_max, handle) + delta;
-    if let Handle::Corner(corner) = handle {
+    let direction = resize_direction(handle).expect("box resize handle");
+    let coordinate = |min, middle, max, direction: f32| {
+        if direction < 0.0 {
+            min
+        } else if direction > 0.0 {
+            max
+        } else {
+            middle
+        }
+    };
+    let position = |direction: Point| {
+        Point::new(
+            coordinate(original_min.x, center.x, original_max.x, direction.x),
+            coordinate(original_min.y, center.y, original_max.y, direction.y),
+        )
+    };
+    let point = position(direction) + delta;
+    if let Handle::Corner(_) = handle {
         let anchor = if modifiers.alt {
             center
         } else {
-            opposite_corner(original_min, original_max, corner)
+            position(direction * -1.0)
         };
         return constrained_box(anchor, point, modifiers.shift, modifiers.alt);
     }
@@ -295,29 +311,6 @@ fn resized_box(
         }
     }
     (min, max)
-}
-
-fn handle_position(min: Point, max: Point, handle: Handle) -> Point {
-    match handle {
-        Handle::Corner(Corner::TopLeft) => min,
-        Handle::Corner(Corner::TopRight) => Point::new(max.x, min.y),
-        Handle::Corner(Corner::BottomRight) => max,
-        Handle::Corner(Corner::BottomLeft) => Point::new(min.x, max.y),
-        Handle::Edge(Edge::Top) => Point::new((min.x + max.x) * 0.5, min.y),
-        Handle::Edge(Edge::Right) => Point::new(max.x, (min.y + max.y) * 0.5),
-        Handle::Edge(Edge::Bottom) => Point::new((min.x + max.x) * 0.5, max.y),
-        Handle::Edge(Edge::Left) => Point::new(min.x, (min.y + max.y) * 0.5),
-        Handle::Start | Handle::End | Handle::Vertex(_) => unreachable!(),
-    }
-}
-
-fn opposite_corner(min: Point, max: Point, corner: Corner) -> Point {
-    match corner {
-        Corner::TopLeft => max,
-        Corner::TopRight => Point::new(min.x, max.y),
-        Corner::BottomRight => min,
-        Corner::BottomLeft => Point::new(max.x, min.y),
-    }
 }
 
 fn ordered(first: f32, second: f32) -> (f32, f32) {

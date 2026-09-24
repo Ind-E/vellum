@@ -43,29 +43,29 @@ impl State {
         {
             self.flush_pen_motion();
         }
-        let outputs: Vec<_> = self.draw.damaged_outputs().collect();
-        for output in outputs {
-            self.request_output_render(output);
-        }
-    }
-
-    fn request_output_render(&mut self, id: OutputId) {
-        let Some(output) = self.wayland.outputs.get_mut(&id) else {
-            return;
-        };
-        if output.frame_pending || output.wgpu.is_none() || !self.draw.needs_render(id) {
-            return;
-        }
-        output.surface.frame(&self.qhandle, id);
-        output.frame_pending = true;
-        self.render(id);
-        // A successful presentation commits the frame request with its buffer.
-        // If acquisition failed, commit the callback alone so it can retry.
-        if self.fatal_error.is_none()
-            && self.draw.needs_render(id)
-            && let Some(output) = self.wayland.outputs.get(&id)
-        {
-            output.surface.commit();
+        let outputs: Vec<_> = self
+            .draw
+            .damaged_outputs()
+            .filter(|id| {
+                self.wayland
+                    .outputs
+                    .get(id)
+                    .is_some_and(|output| !output.frame_pending && output.wgpu.is_some())
+            })
+            .collect();
+        for id in outputs {
+            let output = self.wayland.outputs.get_mut(&id).unwrap();
+            output.surface.frame(&self.qhandle, id);
+            output.frame_pending = true;
+            self.render(id);
+            // A successful presentation commits the frame request with its buffer.
+            // If acquisition failed, commit the callback alone so it can retry.
+            if self.fatal_error.is_none()
+                && self.draw.needs_render(id)
+                && let Some(output) = self.wayland.outputs.get(&id)
+            {
+                output.surface.commit();
+            }
         }
     }
 }

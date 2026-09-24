@@ -212,10 +212,18 @@ impl Element {
     }
 
     pub(super) fn replace(&mut self, kind: ElementKind, style: Style) -> (ElementKind, Style) {
+        let same_shape = self.kind == kind
+            && self.style.size == style.size
+            && self.style.roundness == style.roundness
+            && self.style.filled == style.filled;
         let kind = std::mem::replace(&mut self.kind, kind);
         let style = std::mem::replace(&mut self.style, style);
-        self.bounds = bounds_for(&self.kind, self.style);
-        self.geometry = geometry(&self.kind, self.style);
+        if same_shape {
+            self.geometry.set_color(self.style.color);
+        } else {
+            self.bounds = bounds_for(&self.kind, self.style);
+            self.geometry = geometry(&self.kind, self.style);
+        }
         (kind, style)
     }
 

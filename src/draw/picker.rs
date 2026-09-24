@@ -201,12 +201,20 @@ pub(super) fn picker_geometry(
     current_color: [f32; 4],
     tool_fills: ShapeFills,
     palette: &[[f32; 4]],
-) -> LocalGeometry {
-    let mut output = Geometry::default();
+    viewport: kurbo::Rect,
+) -> Option<LocalGeometry> {
     let origin = [
         (center.x - PICKER_LAYER_SIZE as f32 * 0.5).floor(),
         (center.y - PICKER_LAYER_SIZE as f32 * 0.5).floor(),
     ];
+    let bounds = kurbo::Rect::from_origin_size(
+        (f64::from(origin[0]), f64::from(origin[1])),
+        (f64::from(PICKER_LAYER_SIZE), f64::from(PICKER_LAYER_SIZE)),
+    );
+    if bounds.intersect(viewport.inflate(1.0, 1.0)).area() == 0.0 {
+        return None;
+    }
+    let mut output = Geometry::default();
     let local_center = Point::new(center.x - origin[0], center.y - origin[1]);
     push_color_preview(&mut output, local_center, current_color);
     let step = std::f32::consts::TAU / TOOL_CHOICES.len() as f32;
@@ -251,7 +259,7 @@ pub(super) fn picker_geometry(
         let filled = tool_fills.for_tool(tool);
         push_tool_icon(&mut output, tool_icon_center, tool, filled);
     }
-    LocalGeometry::new(output, origin, [PICKER_LAYER_SIZE; 2])
+    Some(LocalGeometry::new(output, origin, [PICKER_LAYER_SIZE; 2]))
 }
 
 const fn rgb_to_f32(r: u8, g: u8, b: u8, alpha: f32) -> [f32; 4] {

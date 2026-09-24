@@ -154,6 +154,9 @@ impl TextSpec<'_> {
                         });
                     }
                 }
+                if outline_glyphs.is_empty() {
+                    continue;
+                }
                 target
                     .scene
                     .set_paint(vello_color(self.color, target_is_srgb));

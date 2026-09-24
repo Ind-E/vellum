@@ -135,7 +135,11 @@ impl LiveStroke {
         let point = point + self.alignment_offset;
         if self.direction_locked {
             // Keep the endpoint shown by the stabilized live preview.
-            if let Some([x, y]) = self.tail_centerline(false).last().copied() {
+            if let Some([x, y]) = self
+                .tail_centerline(self.points.len(), false)
+                .last()
+                .copied()
+            {
                 *self
                     .points
                     .last_mut()
@@ -189,19 +193,24 @@ impl LiveStroke {
     }
 
     fn cache_ready_chunk(&mut self) -> bool {
-        let raw_tail_len = self
+        let raw_start = self
             .cache_anchor
             .as_ref()
-            .map_or(self.points.len(), |anchor| {
-                self.points.len().saturating_sub(anchor.raw_index)
-            });
-        if raw_tail_len <= CHUNK_POINTS + 2 {
+            .map_or(0, |anchor| anchor.raw_index);
+        if self.points.len() - raw_start <= CHUNK_POINTS + 2 {
             return false;
         }
-        let centerline = self.tail_centerline(false);
-        if centerline.len() <= CHUNK_POINTS + 2 {
-            return false;
-        }
+        let mut raw_end = (raw_start + CHUNK_POINTS * 2).min(self.points.len());
+        let centerline = loop {
+            let centerline = self.tail_centerline(raw_end, false);
+            if centerline.len() > CHUNK_POINTS + 2 {
+                break centerline;
+            }
+            if raw_end == self.points.len() {
+                return false;
+            }
+            raw_end = (raw_end + CHUNK_POINTS).min(self.points.len());
+        };
 
         let split = CHUNK_POINTS;
         self.cached.extend(centerline_path(
@@ -211,7 +220,7 @@ impl LiveStroke {
             true,
         ));
         let raw_index = self.cache_anchor.as_ref().map_or_else(
-            || split + self.points.len() - centerline.len(),
+            || split + raw_end - centerline.len(),
             |anchor| anchor.raw_index + split,
         );
         self.cache_anchor = Some(CacheAnchor {
@@ -227,7 +236,7 @@ impl LiveStroke {
         }
         let mut path = self.cached.clone();
         path.extend(centerline_path(
-            &self.tail_centerline(complete),
+            &self.tail_centerline(self.points.len(), complete),
             self.style,
             true,
             false,
@@ -235,15 +244,22 @@ impl LiveStroke {
         Geometry::fill(path, Fill::NonZero, self.style.color)
     }
 
-    fn tail_centerline(&self, complete: bool) -> Vec<[f64; 2]> {
+    fn tail_centerline(&self, raw_end: usize, complete: bool) -> Vec<[f64; 2]> {
         let Some(anchor) = &self.cache_anchor else {
-            return centerline_points(&self.points, self.style.size, complete);
+            return centerline_points(&self.points[..raw_end], self.style.size, complete);
         };
-        let mut input = Vec::with_capacity(self.points.len() - anchor.raw_index);
+        let mut input = Vec::with_capacity(raw_end - anchor.raw_index);
         input.push(perfect_freehand::InputPoint::Array(anchor.centerline, None));
-        input.extend(self.points[anchor.raw_index + 1..].iter().map(|point| {
-            perfect_freehand::InputPoint::Array([f64::from(point.x), f64::from(point.y)], None)
-        }));
+        input.extend(
+            self.points[anchor.raw_index + 1..raw_end]
+                .iter()
+                .map(|point| {
+                    perfect_freehand::InputPoint::Array(
+                        [f64::from(point.x), f64::from(point.y)],
+                        None,
+                    )
+                }),
+        );
         perfect_freehand::get_stroke_points(&input, &stroke_options(0.0, complete))
             .into_iter()
             .map(|point| point.point)

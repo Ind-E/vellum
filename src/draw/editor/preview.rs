@@ -1,6 +1,7 @@
+use super::interaction::ResizeSnapshot;
 use super::{Editor, Interaction, drawing_kind};
 use crate::draw::picker::{ShapeFills, picker_geometry};
-use crate::draw::scene::{Element, ElementId, ElementKind, Point, Style, geometry};
+use crate::draw::scene::{ElementId, ElementKind, Point, geometry};
 use crate::draw::selection;
 use crate::render::Geometry;
 use crate::tool::Tool;
@@ -50,64 +51,41 @@ impl Editor {
             }
             return;
         }
-        if let Some(id) = self.selected.first() {
-            self.append_selection_geometry_for(
-                *id,
-                show_handles && self.interaction.is_none(),
-                output,
-            );
-        }
-    }
-
-    fn append_selection_geometry_for(
-        &self,
-        id: ElementId,
-        show_handles: bool,
-        output: &mut Vec<Geometry>,
-    ) {
+        let Some(&id) = self.selected.first() else {
+            return;
+        };
         let Some(element) = self.element(id) else {
             return;
         };
-        match &self.interaction {
-            Some(Interaction::EditingText(edit)) if edit.id == Some(id) => {
-                let bounds = edit.bounds();
-                output.push(selection::outline(bounds.min, bounds.max));
-                return;
-            }
-            Some(Interaction::Resizing {
-                id: resizing_id,
-                current,
-                ..
-            }) if *resizing_id == id => {
-                if !matches!(
-                    current.kind,
-                    ElementKind::Segment { .. } | ElementKind::Triangle { .. }
-                ) {
-                    output.push(selection::outline(current.bounds.min, current.bounds.max));
-                }
-                return;
-            }
-            _ => {}
+        if let Some(edit) = self.text_edit().filter(|edit| edit.id == Some(id)) {
+            let bounds = edit.bounds();
+            output.push(selection::outline(bounds.min, bounds.max));
+            return;
         }
+        let preview = self.resize_preview(id);
+        let (kind, bounds) = preview.map_or((&element.kind, element.bounds), |current| {
+            (&current.kind, current.bounds)
+        });
         let offset = self.moving_offset(id).unwrap_or_default();
-        let kind = &element.kind;
         if !matches!(
             kind,
             ElementKind::Segment { .. } | ElementKind::Triangle { .. }
         ) {
-            let bounds = element.bounds;
             output.push(selection::outline(bounds.min + offset, bounds.max + offset));
         }
-        if !show_handles {
+        if !show_handles || self.interaction.is_some() {
             return;
         }
         selection::append_handles(kind, element.style, output);
     }
 
-    pub(in crate::draw) fn picker_geometry(&self) -> Option<crate::render::LocalGeometry> {
+    pub(in crate::draw) fn picker_geometry(
+        &self,
+        viewport: kurbo::Rect,
+    ) -> Option<crate::render::LocalGeometry> {
         let picker = self.picker?;
         let active = self.color_tool();
-        Some(picker_geometry(
+        picker_geometry(
             picker.center,
             picker.hovered,
             active,
@@ -118,36 +96,18 @@ impl Editor {
                 ellipse: self.tool_fill(Tool::Ellipse),
             },
             &self.palette,
-        ))
+            viewport,
+        )
     }
 
-    pub(in crate::draw) fn element_geometry_preview(&self, element: &Element) -> Option<Geometry> {
-        if let Some(delta) = self.moving_offset(element.id) {
-            return Some(element.geometry.translated([delta.x, delta.y]));
-        }
+    pub(in crate::draw) fn resize_preview(&self, id: ElementId) -> Option<&ResizeSnapshot> {
         match &self.interaction {
             Some(Interaction::Resizing {
                 id: resized,
                 current,
                 ..
-            }) if *resized == element.id => Some(geometry(&current.kind, current.style)),
+            }) if *resized == id => Some(current),
             _ => None,
-        }
-    }
-
-    pub(in crate::draw) fn element_bounds_preview(
-        &self,
-        element: &Element,
-    ) -> crate::draw::scene::Bounds {
-        if let Some(Interaction::Resizing { id, current, .. }) = &self.interaction
-            && *id == element.id
-        {
-            return current.bounds;
-        }
-        let offset = self.moving_offset(element.id).unwrap_or_default();
-        crate::draw::scene::Bounds {
-            min: element.bounds.min + offset,
-            max: element.bounds.max + offset,
         }
     }
 
@@ -161,21 +121,5 @@ impl Editor {
             return None;
         };
         ids.binary_search(&id).is_ok().then_some(*current - *start)
-    }
-
-    pub(in crate::draw) fn text_resize_preview(
-        &self,
-        id: ElementId,
-    ) -> Option<(&ElementKind, Style)> {
-        let Some(Interaction::Resizing {
-            id: resized,
-            current,
-            ..
-        }) = &self.interaction
-        else {
-            return None;
-        };
-        (*resized == id && matches!(current.kind, ElementKind::Text { .. }))
-            .then_some((&current.kind, current.style))
     }
 }

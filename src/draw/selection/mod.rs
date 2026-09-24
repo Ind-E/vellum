@@ -124,9 +124,7 @@ pub(super) fn append_handles(kind: &ElementKind, style: Style, output: &mut Vec<
         return;
     }
     if let Some([start, end]) = rendered_segment_endpoints(kind, style) {
-        let start_geometry = endpoint_geometry(start);
-        let end_geometry = start_geometry.translated([end.x - start.x, end.y - start.y]);
-        output.extend([start_geometry, end_geometry]);
+        output.extend([endpoint_geometry(start), endpoint_geometry(end)]);
     }
 }
 

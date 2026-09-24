@@ -90,6 +90,15 @@ impl Geometry {
         self.commands.extend(other.commands);
     }
 
+    pub fn set_color(&mut self, color: [f32; 4]) {
+        for command in &mut self.commands {
+            match command {
+                DrawCommand::Fill { color: current, .. }
+                | DrawCommand::Stroke { color: current, .. } => *current = color,
+            }
+        }
+    }
+
     pub fn fill_hit_test(&self, point: kurbo::Point, slop: f64) -> bool {
         let slop = slop.max(0.0);
         let slop_squared = slop.powi(2);
@@ -170,35 +179,5 @@ impl Geometry {
                     }
                 })
         })
-    }
-
-    pub fn translated(&self, offset: [f32; 2]) -> Self {
-        let transform = Affine::translate((f64::from(offset[0]), f64::from(offset[1])));
-        Self {
-            commands: self
-                .commands
-                .iter()
-                .map(|command| match command {
-                    DrawCommand::Fill {
-                        path,
-                        fill_rule,
-                        color,
-                    } => DrawCommand::Fill {
-                        path: transform * path,
-                        fill_rule: *fill_rule,
-                        color: *color,
-                    },
-                    DrawCommand::Stroke {
-                        path,
-                        stroke,
-                        color,
-                    } => DrawCommand::Stroke {
-                        path: transform * path,
-                        stroke: stroke.clone(),
-                        color: *color,
-                    },
-                })
-                .collect(),
-        }
     }
 }

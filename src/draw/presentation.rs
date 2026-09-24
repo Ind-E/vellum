@@ -37,12 +37,15 @@ impl DrawState {
         let items = {
             let mut items = Vec::with_capacity(self.editor.elements().len());
             for element in self.editor.elements() {
+                let preview = self.editor.resize_preview(element.id);
+                let offset = self.editor.moving_offset(element.id).unwrap_or_default();
+                let bounds = preview.map_or(element.bounds, |current| current.bounds);
+                let bounds = scene::Bounds {
+                    min: bounds.min + offset,
+                    max: bounds.max + offset,
+                };
                 // Layout bounds do not include all glyph ink overhangs; keep text conservative.
-                if !matches!(element.kind, ElementKind::Text { .. })
-                    && !self
-                        .editor
-                        .element_bounds_preview(element)
-                        .intersects(visible)
+                if !matches!(element.kind, ElementKind::Text { .. }) && !bounds.intersects(visible)
                 {
                     continue;
                 }
@@ -50,10 +53,9 @@ impl DrawState {
                     items.push(SceneItem::Text(edit.spec()));
                     continue;
                 }
-                let (kind, style) = self
-                    .editor
-                    .text_resize_preview(element.id)
-                    .unwrap_or((&element.kind, element.style));
+                let (kind, style) = preview.map_or((&element.kind, element.style), |current| {
+                    (&current.kind, current.style)
+                });
                 let ElementKind::Text {
                     origin,
                     content,
@@ -61,14 +63,14 @@ impl DrawState {
                 } = kind
                 else {
                     items.push(SceneItem::Geometry(
-                        self.editor
-                            .element_geometry_preview(element)
+                        preview
+                            .map(|current| scene::geometry(&current.kind, current.style))
                             .map(std::borrow::Cow::Owned)
                             .unwrap_or(std::borrow::Cow::Borrowed(&element.geometry)),
+                        [offset.x, offset.y],
                     ));
                     continue;
                 };
-                let offset = self.editor.moving_offset(element.id).unwrap_or_default();
                 items.push(SceneItem::Text(TextSpec {
                     key: element.id,
                     content,
@@ -89,7 +91,7 @@ impl DrawState {
                 ..
             }) = &self.feedback
             {
-                for [x, y] in [[15.0, 16.0], [17.0, 16.0], [16.0, 15.0], [16.0, 17.0]].into_iter() {
+                for [x, y] in [[15.0, 16.0], [17.0, 16.0], [16.0, 15.0], [16.0, 17.0]] {
                     items.push(SceneItem::Text(TextSpec {
                         key: u64::MAX - 30,
                         content,
@@ -154,7 +156,7 @@ impl DrawState {
                 .bounds()
                 .is_some_and(|bounds| bounds.inflate(1.0, 1.0).intersect(viewport).area() > 0.0)
         });
-        let picker = self.editor.picker_geometry();
+        let picker = self.editor.picker_geometry(viewport);
         if wgpu.render(
             &items,
             &self.previews,

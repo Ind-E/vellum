@@ -7,10 +7,10 @@ use crate::text::text_line_height;
 use crate::tool::Tool;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct ResizeSnapshot {
-    pub(super) kind: ElementKind,
-    pub(super) style: Style,
-    pub(super) bounds: Bounds,
+pub(in crate::draw) struct ResizeSnapshot {
+    pub(in crate::draw) kind: ElementKind,
+    pub(in crate::draw) style: Style,
+    pub(in crate::draw) bounds: Bounds,
 }
 
 impl From<&Element> for ResizeSnapshot {

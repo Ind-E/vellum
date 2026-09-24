@@ -18,7 +18,7 @@ color = "0.3.3"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.9"
+toml = { version = "0.9", default-features = false, features = ["std", "serde", "parse"] }
 
 clap.workspace = true
 
