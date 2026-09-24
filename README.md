@@ -8,10 +8,7 @@ Vellum began as a fork of [Chameleos](https://github.com/Treeniks/chameleos) by 
 
 ## Compatibility
 
-Vellum requires a Wayland compositor that implements
-[`wlr-layer-shell`](https://wayland.app/protocols/wlr-layer-shell-unstable-v1). This
-includes niri, Sway, Hyprland, river, Wayfire, labwc, KDE Plasma, and COSMIC, though
-niri is the only compositor currently tested.
+Vellum requires a Wayland compositor that implements [`wlr-layer-shell`](https://wayland.app/protocols/wlr-layer-shell-unstable-v1). This includes niri, Sway, Hyprland, river, Wayfire, labwc, KDE Plasma, and COSMIC, though niri is the only compositor currently tested.
 
 ## Installation
 
@@ -166,9 +163,7 @@ While editing text:
 
 ## Configuration
 
-Vellum looks for `vellum/config.toml` in `$XDG_CONFIG_HOME` (default `~/.config`), then
-`$XDG_CONFIG_DIRS` (default `/etc/xdg`). Use `--config PATH` to load a specific file or
-`--no-config` to skip configuration.
+Vellum looks for `vellum/config.toml` in `$XDG_CONFIG_HOME` (default `~/.config`), then `$XDG_CONFIG_DIRS` (default `/etc/xdg`). Use `--config PATH` to load a specific file or `--no-config` to skip configuration.
 
 ### Options
 
@@ -206,5 +201,4 @@ Set these properties under `[tools.<tool>]`.
 
 ### Defaults
 
-See the [complete default configuration](default-config.toml). The source installer
-also places a copy under `~/.local/share/doc/vellum`.
+See the [complete default configuration](default-config.toml). The source installer also places a copy under `~/.local/share/doc/vellum`.
