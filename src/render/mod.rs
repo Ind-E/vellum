@@ -79,6 +79,7 @@ impl WgpuState {
             alpha_mode,
             view_formats: vec![],
         };
+        log::debug!("surface configuration: {surface_config:?}");
         surface.configure(&device, &surface_config);
 
         let target_config = vello_hybrid::RenderTargetConfig {
@@ -193,31 +194,37 @@ impl WgpuState {
         checked_target_size(&self.device, [width, height], "annotation")?;
         self.surface_config.width = width;
         self.surface_config.height = height;
+        log::debug!("resizing surface to {width}x{height}");
         self.surface.configure(&self.device, &self.surface_config);
         Ok(())
     }
 
     fn acquire_frame(&self) -> Result<Option<wgpu::SurfaceTexture>, String> {
+        log::trace!("acquiring surface frame");
         let mut status = self.surface.get_current_texture();
         if matches!(
             status,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost
         ) {
+            log::debug!("reconfiguring surface after acquisition: {status:?}");
             self.surface.configure(&self.device, &self.surface_config);
             status = self.surface.get_current_texture();
         }
         let output = match status {
             wgpu::CurrentSurfaceTexture::Success(output)
             | wgpu::CurrentSurfaceTexture::Suboptimal(output) => output,
-            wgpu::CurrentSurfaceTexture::Timeout
+            status @ (wgpu::CurrentSurfaceTexture::Timeout
             | wgpu::CurrentSurfaceTexture::Occluded
             | wgpu::CurrentSurfaceTexture::Outdated
-            | wgpu::CurrentSurfaceTexture::Lost => return Ok(None),
+            | wgpu::CurrentSurfaceTexture::Lost) => {
+                log::trace!("surface acquisition deferred: {status:?}");
+                return Ok(None);
+            }
             wgpu::CurrentSurfaceTexture::Validation => {
                 return Err("surface acquisition validation error".into());
             }
         };
-
+        log::trace!("surface frame acquired");
         Ok(Some(output))
     }
 
@@ -326,9 +333,12 @@ impl WgpuState {
                 &self.texture_bindings,
             )
             .map_err(|error| format!("Vello annotation render failed: {error}"))?;
+        log::trace!("submitting annotation frame");
         self.queue.submit(Some(encoder.finish()));
         before_present();
+        log::trace!("presenting annotation frame");
         output.present();
+        log::trace!("annotation frame presented");
         Ok(true)
     }
 

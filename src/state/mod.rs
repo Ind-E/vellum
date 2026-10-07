@@ -55,11 +55,13 @@ impl State {
         if active == self.active {
             return;
         }
+        log::debug!("setting drawing mode active={active}");
         if active {
             self.activate();
         } else {
             self.deactivate();
         }
+        log::debug!("drawing mode active={}", self.active);
     }
 
     fn activate(&mut self) {

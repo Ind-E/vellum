@@ -1,4 +1,7 @@
+use std::io::Write;
+use std::os::unix::fs::MetadataExt;
 use std::process::ExitCode;
+use std::time::Instant;
 
 use clap::Parser;
 
@@ -50,6 +53,37 @@ fn run() -> Result<ExitCode, String> {
         });
     }
     let settings = config::Settings::load(arguments)?;
+    let started = Instant::now();
+    // JOURNAL_STREAM can be inherited after stderr was redirected. Match the
+    // descriptor before emitting the journal's severity prefixes.
+    let journal = std::env::var("JOURNAL_STREAM")
+        .ok()
+        .zip(std::fs::metadata("/proc/self/fd/2").ok())
+        .is_some_and(|(stream, metadata)| {
+            stream == format!("{}:{}", metadata.dev(), metadata.ino())
+        });
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,vellum=info"))
+        .format(move |buf, record| {
+            if journal {
+                let priority = match record.level() {
+                    log::Level::Error => 3,
+                    log::Level::Warn => 4,
+                    log::Level::Info => 6,
+                    log::Level::Debug | log::Level::Trace => 7,
+                };
+                write!(buf, "<{priority}>")?;
+            }
+            writeln!(
+                buf,
+                "[{:.3}s {} {}] {}",
+                started.elapsed().as_secs_f64(),
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        })
+        .init();
+    log::info!("Vellum {} starting", env!("CARGO_PKG_VERSION"));
     event_loop::run(settings)?;
     Ok(ExitCode::SUCCESS)
 }

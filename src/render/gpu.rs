@@ -22,15 +22,34 @@ impl GpuContext {
     ) -> Result<(Self, WgpuState), String> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
+            flags: wgpu::InstanceFlags::default().with_env(),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = create_surface(&instance, display, surface)?;
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: false,
-            compatible_surface: Some(&surface),
-        }))
-        .map_err(|error| format!("could not select a Vulkan adapter: {error}"))?;
+        let adapter = match std::env::var("WGPU_ADAPTER_NAME") {
+            Ok(name) => {
+                let name = name.to_lowercase();
+                pollster::block_on(instance.enumerate_adapters(wgpu::Backends::VULKAN))
+                    .into_iter()
+                    .find(|adapter| {
+                        adapter.get_info().name.to_lowercase().contains(&name)
+                            && adapter.is_surface_supported(&surface)
+                    })
+                    .ok_or_else(|| {
+                        format!("no Wayland-compatible Vulkan adapter matches {name:?}")
+                    })?
+            }
+            Err(std::env::VarError::NotPresent) => {
+                pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::default(),
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(&surface),
+                }))
+                .map_err(|error| format!("could not select a Vulkan adapter: {error}"))?
+            }
+            Err(error) => return Err(format!("invalid WGPU_ADAPTER_NAME: {error}")),
+        };
+        log::info!("GPU: {:?}", adapter.get_info());
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: None,
             required_features: wgpu::Features::empty(),
@@ -40,6 +59,11 @@ impl GpuContext {
             trace: wgpu::Trace::Off,
         }))
         .map_err(|error| format!("could not create the GPU device: {error}"))?;
+        device.set_device_lost_callback(|reason, message| {
+            if reason != wgpu::DeviceLostReason::Destroyed {
+                log::error!("GPU device lost ({reason:?}): {message}");
+            }
+        });
         let gpu = Self {
             instance,
             adapter,

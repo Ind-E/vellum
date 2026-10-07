@@ -41,6 +41,8 @@ wgpu = { version = "29.0.0", default-features = false, features = [
     "wgsl",
 ] }
 pollster = "0.4.0"
+log = "0.4"
+env_logger = { version = "0.11", default-features = false }
 wlr-capture = { version = "1.10.0", default-features = false }
 parley = { version = "0.11.1", features = ["complex-scripts"] }
 glifo = { version = "0.3.0", features = ["png"] }
