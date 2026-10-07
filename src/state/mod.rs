@@ -26,6 +26,7 @@ pub(crate) struct State {
     clear_on_escape: bool,
     freeze: freeze::Freeze,
     pending_pen_motion: PendingPenMotion,
+    render_requested: bool,
 
     wayland: WaylandState,
     draw: draw::DrawState,
@@ -90,28 +91,18 @@ impl State {
         self.pointer.cancel_gesture();
         self.tablet.cancel_gesture();
         self.pending_pen_motion.reset(None);
-        let preview_changed = self.draw.deactivate();
+        self.draw.deactivate();
+        for output in self.wayland.outputs.values_mut() {
+            if let Some(wgpu) = &mut output.wgpu {
+                wgpu.release_picker_target();
+            }
+        }
         self.pointer.restore_cursor();
         self.tablet.restore_cursors();
         self.active = false;
         self.selected_output = None;
-        // Replace frozen content before releasing input, without waiting on an
-        // older frame callback. A transient acquisition failure remains damaged
-        // and is retried by the normal render scheduler below.
-        let damaged: Vec<_> = self.draw.damaged_outputs().collect();
-        for output in damaged {
-            self.render(output);
-        }
+        // Commit input release and replacement of frozen content together.
         self.update_output_input();
-        if preview_changed || self.draw.damaged_outputs().next().is_some() {
-            self.request_render();
-        } else {
-            for output in self.wayland.outputs.values_mut() {
-                if let Some(wgpu) = &mut output.wgpu {
-                    wgpu.release_picker_target();
-                }
-            }
-        }
     }
 
     pub(crate) fn clear(&mut self) {
@@ -132,6 +123,12 @@ impl State {
             self.draw.next_wakeup(),
             self.keyboard.next_wakeup(),
             self.freeze.next_wakeup(),
+            self.wayland
+                .outputs
+                .iter()
+                .filter(|(id, _)| !self.freeze.hides(**id))
+                .filter_map(|(_, output)| output.render_retry)
+                .min(),
         ]
         .into_iter()
         .flatten()
@@ -149,6 +146,11 @@ impl State {
             self.apply_action(action);
         }
         if self.draw.handle_timeouts(now) {
+            self.request_render();
+        }
+        if self.wayland.outputs.iter().any(|(id, output)| {
+            !self.freeze.hides(*id) && output.render_retry.is_some_and(|deadline| now >= deadline)
+        }) {
             self.request_render();
         }
     }

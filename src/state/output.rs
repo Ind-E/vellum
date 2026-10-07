@@ -30,6 +30,9 @@ pub(super) struct Output {
     pub(super) surface: WlSurface,
     pub(super) layer_surface: ZwlrLayerSurfaceV1,
     pub(super) frame_pending: bool,
+    pub(super) input_pending: bool,
+    pub(super) input_state: (bool, bool),
+    pub(super) render_retry: Option<std::time::Instant>,
     pub(super) wgpu: Option<WgpuState>,
     pub(super) transform: u32,
 }
@@ -125,6 +128,9 @@ impl State {
                 surface,
                 layer_surface,
                 frame_pending: false,
+                input_pending: false,
+                input_state: (false, false),
+                render_retry: None,
                 wgpu: None,
                 transform: 0,
             },
@@ -380,9 +386,14 @@ impl Dispatch<ZwlrLayerSurfaceV1, OutputId> for State {
                 let Some(output_state) = state.wayland.outputs.get_mut(output) else {
                     return;
                 };
+                let resized = output_state.logical_size != [width, height];
                 output_state.logical_size = [width, height];
                 if output_state.wgpu.is_some() {
-                    state.resize_output(*output);
+                    // Input/focus changes can produce another configure with
+                    // unchanged dimensions. Its acknowledgement needs no redraw.
+                    if resized {
+                        state.resize_output(*output);
+                    }
                 } else {
                     output_state.configure_scale();
                     let [width, height] = output_state.buffer_size();

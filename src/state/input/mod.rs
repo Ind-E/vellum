@@ -124,9 +124,9 @@ impl State {
     }
 
     pub(super) fn update_output_input(&mut self) {
-        let empty_region = self.wayland.compositor.create_region(&self.qhandle, ());
+        let mut empty_region = None;
         let input_grab_active = self.pointer.input_grab_active() || self.tablet.input_grab_active();
-        for (&id, output) in &self.wayland.outputs {
+        for (&id, output) in &mut self.wayland.outputs {
             let accepts_input = self.active
                 && match self.draw_on {
                     DrawOn::All => true,
@@ -135,21 +135,36 @@ impl State {
                             || self.selected_output.is_none_or(|selected| selected == id)
                     }
                 };
+            let accepts_keyboard = accepts_input && self.keyboard_output == Some(id);
+            if output.input_state == (accepts_input, accepts_keyboard) {
+                continue;
+            }
+            output.input_state = (accepts_input, accepts_keyboard);
             output.surface.set_input_region(if accepts_input {
                 None
             } else {
-                Some(&empty_region)
+                Some(empty_region.get_or_insert_with(|| {
+                    self.wayland.compositor.create_region(&self.qhandle, ())
+                }))
             });
-            output.layer_surface.set_keyboard_interactivity(
-                if accepts_input && self.keyboard_output == Some(id) {
+            output
+                .layer_surface
+                .set_keyboard_interactivity(if accepts_keyboard {
                     KeyboardInteractivity::Exclusive
                 } else {
                     KeyboardInteractivity::None
-                },
-            );
-            output.surface.commit();
+                });
+            // Vulkan owns commits and their FIFO/explicit-sync state. Apply
+            // input changes with a buffer instead of issuing an empty commit.
+            // An idle/occluded surface may still owe a frame callback, so input
+            // changes must be able to bypass normal frame throttling.
+            output.input_pending = true;
+            self.draw.damage(id);
         }
-        empty_region.destroy();
+        if let Some(empty_region) = empty_region {
+            empty_region.destroy();
+        }
+        self.request_render();
     }
 
     pub(super) fn interrupt_pointer_gesture(&mut self) {

@@ -21,6 +21,8 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
         event_queue
             .dispatch_pending(&mut state)
             .map_err(|error| format!("Wayland dispatch failed: {error}"))?;
+        // Coalesce input, cursor and drawing changes before presenting.
+        state.render_pending();
         if let Some(error) = state.fatal_error.take() {
             return Err(error);
         }

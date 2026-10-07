@@ -103,6 +103,7 @@ impl State {
             clear_on_escape,
             freeze,
             pending_pen_motion: PendingPenMotion::default(),
+            render_requested: false,
             wayland: WaylandState {
                 _connection: connection,
                 display,
