@@ -77,8 +77,10 @@ pub(super) fn choice(center: Point, point: Point, color_count: usize) -> Option<
 fn radial_index(center: Point, point: Point, count: usize) -> usize {
     let delta = point - center;
     let step = std::f32::consts::TAU / count as f32;
-    ((delta.y.atan2(delta.x) + step * 0.5).rem_euclid(std::f32::consts::TAU) / step).floor()
-        as usize
+    // Floating-point remainder can round up to TAU at the wrap boundary.
+    (((delta.y.atan2(delta.x) + step * 0.5).rem_euclid(std::f32::consts::TAU) / step).floor()
+        as usize)
+        % count
 }
 
 fn radial_point(center: Point, radius: f32, angle: f32) -> kurbo::Point {
