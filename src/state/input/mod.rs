@@ -183,8 +183,8 @@ impl State {
             }
         }
         self.pointer.cancel_gesture();
-        self.pending_pen_motion.reset(None);
         if was_grabbed {
+            self.pending_pen_motion.reset(None);
             self.update_output_input();
         }
     }
