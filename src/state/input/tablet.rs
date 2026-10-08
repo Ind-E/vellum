@@ -55,7 +55,7 @@ struct ToolState {
     output: Option<OutputId>,
     pos: Option<(f64, f64)>,
     pen_held: bool,
-    button_held: bool,
+    buttons_held: u8,
     suppressed_gesture: bool,
     button_press_time: Option<u32>,
 }
@@ -67,7 +67,6 @@ impl ToolState {
         }
 
         update_held(&mut self.pen_held, sequence, PEN);
-        update_held(&mut self.button_held, sequence, BUTTON);
     }
 
     fn refresh_cursor(&mut self, tablet_tool: &ZwpTabletToolV2, cursor: Cursor) {
@@ -107,7 +106,7 @@ impl TabletState {
         let (x, y) = tool.pos?;
         let point = Point::new(x as f32, y as f32);
         let tool_override =
-            ToolOverride::from_eraser(tool.eraser || (tool.button_held && tool.pen_held));
+            ToolOverride::from_eraser(tool.eraser || (tool.buttons_held != 0 && tool.pen_held));
         let cursor = draw.cursor(point, tool_override);
         let changed = draw.set_tool_cursor(match cursor.tool() {
             Some(preview) if tool.cursor_shape_device.is_some() => Some((point, preview)),
@@ -128,7 +127,7 @@ impl TabletState {
             tool.event_sequence.pressed = 0;
             tool.event_sequence.released = 0;
             tool.pen_held = false;
-            tool.button_held = false;
+            tool.buttons_held = 0;
             tool.suppressed_gesture = false;
             tool.button_press_time = None;
         }
@@ -162,7 +161,7 @@ impl TabletState {
             tool.cursor_serial = None;
             tool.current_cursor = None;
             tool.pen_held = false;
-            tool.button_held = false;
+            tool.buttons_held = 0;
             tool.suppressed_gesture = false;
             tool.button_press_time = None;
         }
@@ -312,10 +311,11 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
             .map(|output| state.output_origin(output))
             .unwrap_or_default();
         let tool = state.tablet.tools.get_mut(&id).unwrap();
-        if let Some(sequence) = tool
-            .event_sequence
-            .dispatch(event, (f64::from(origin.x), f64::from(origin.y)))
-        {
+        if let Some(sequence) = tool.event_sequence.dispatch(
+            event,
+            (f64::from(origin.x), f64::from(origin.y)),
+            &mut tool.buttons_held,
+        ) {
             tool.update_state(sequence);
             if let Some(serial) = sequence.enter_serial {
                 tool.cursor_serial = Some(serial);
@@ -328,7 +328,7 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
             }
             if !state.active || state.freeze.capturing() || output.is_none() {
                 tool.pen_held = false;
-                tool.button_held = false;
+                tool.buttons_held = 0;
                 tool.suppressed_gesture = false;
                 tool.button_press_time = None;
                 return;
@@ -345,10 +345,10 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
                 button_released && short_click(tool.button_press_time.take(), Some(sequence.time));
             let pos = tool.pos;
             let pen_held = tool.pen_held;
-            let button_held = tool.button_held;
+            let button_held = tool.buttons_held != 0;
             if sequence.proximity_out {
                 tool.pen_held = false;
-                tool.button_held = false;
+                tool.buttons_held = 0;
                 tool.button_press_time = None;
             }
             if state.pointer.input_grab_active() || tool.suppressed_gesture {
@@ -472,6 +472,7 @@ impl EventSequence {
         &mut self,
         event: <ZwpTabletToolV2 as Proxy>::Event,
         origin: (f64, f64),
+        buttons_held: &mut u8,
     ) -> Option<Self> {
         use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_tool_v2::Event;
         match event {
@@ -500,12 +501,26 @@ impl EventSequence {
                 state: button_state,
             } => {
                 use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_tool_v2::ButtonState;
-                if matches!(button, EVDEV_STYLUS | EVDEV_STYLUS2) {
-                    match button_state {
-                        WEnum::Value(ButtonState::Pressed) => self.pressed |= BUTTON,
-                        WEnum::Value(ButtonState::Released) => self.released |= BUTTON,
-                        _ => {}
+                let mask = match button {
+                    EVDEV_STYLUS => 1,
+                    EVDEV_STYLUS2 => 2,
+                    _ => return None,
+                };
+                let was_held = *buttons_held != 0;
+                match button_state {
+                    WEnum::Value(ButtonState::Pressed) => *buttons_held |= mask,
+                    WEnum::Value(ButtonState::Released) => *buttons_held &= !mask,
+                    _ => return None,
+                }
+                if !was_held && *buttons_held != 0 {
+                    // A release and another press in one frame keep the override held.
+                    if self.released(BUTTON) {
+                        self.released &= !BUTTON;
+                    } else {
+                        self.pressed |= BUTTON;
                     }
+                } else if was_held && *buttons_held == 0 {
+                    self.released |= BUTTON;
                 }
             }
             Event::Frame { time } => {
