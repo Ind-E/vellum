@@ -24,8 +24,10 @@ jobs:
         with:
           toolchain: stable
           components: clippy, rustfmt
+      - run: cargo fmt --all --check
       - name: Install dependencies
-        run: sudo apt-get install -y libfontconfig-dev libwayland-dev libxkbcommon-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfontconfig-dev libwayland-dev libxkbcommon-dev
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo fmt --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
