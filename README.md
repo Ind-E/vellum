@@ -27,6 +27,12 @@ Import and enable the module in your NixOS or Home Manager configuration:
   # Use homeModules.default for Home Manager.
   imports = [inputs.vellum.nixosModules.default];
   services.vellum.enable = true;
+
+  # Optionally add cache settings for pre-built binaries.
+  nix.settings = {
+    substituters = ["https://vellum.cachix.org"];
+    trusted-public-keys = ["vellum.cachix.org-1:gUB2bSe5JrLoUCOhwM/VwiIKJBwRTBQ5HVhCLaw9vKk="];
+  };
 }
 ```
 
