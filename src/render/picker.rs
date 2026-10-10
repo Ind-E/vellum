@@ -68,6 +68,7 @@ impl PickerState {
         let Viewport {
             origin: viewport_origin,
             scale,
+            ..
         } = *viewport;
         let picker_origin = [
             (f64::from(picker.origin[0] - viewport_origin[0]) * scale[0]) as f32,

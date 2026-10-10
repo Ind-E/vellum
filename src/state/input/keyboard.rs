@@ -363,7 +363,7 @@ impl Dispatch<WlKeyboard, ()> for State {
                 key,
                 state: WEnum::Value(KeyState::Pressed),
                 ..
-            } if state.active => {
+            } if state.is_active() => {
                 let session = state
                     .draw
                     .text_input_snapshot()
@@ -371,6 +371,18 @@ impl Dispatch<WlKeyboard, ()> for State {
                 state.keyboard.sync_text_session(session);
                 let editing = state.draw.is_editing_text();
                 let chord = state.keyboard.chord(key, editing);
+                if !editing
+                    && chord.as_ref().is_some_and(|chord| {
+                        chord.text.eq_ignore_ascii_case("w")
+                            && !chord.modifiers.ctrl
+                            && !chord.modifiers.alt
+                            && !chord.modifiers.shift
+                            && !chord.logo
+                    })
+                {
+                    state.toggle_whiteboard();
+                    return;
+                }
                 if !editing
                     && chord.as_ref().is_some_and(|chord| {
                         chord.text == " "

@@ -160,6 +160,21 @@ impl PointerState {
         self.reset_scroll();
     }
 
+    pub(in crate::state) fn suppress_gesture(&mut self) {
+        let held = (
+            self.left_button_held,
+            self.right_button_held,
+            self.middle_button_held,
+        );
+        self.cancel_gesture();
+        (
+            self.left_button_held,
+            self.right_button_held,
+            self.middle_button_held,
+        ) = held;
+        self.suppressed_gesture = held.0 || held.1 || held.2;
+    }
+
     fn update_state(&mut self, sequence: EventSequence) {
         if let Some(new_pos) = sequence.motion {
             self.position = Some(new_pos);
@@ -320,7 +335,7 @@ impl Dispatch<WlPointer, (), State> for PointerState {
         _qhandle: &QueueHandle<State>,
     ) {
         use wayland_client::protocol::wl_pointer::Event;
-        if (!state.active || state.freeze.capturing())
+        if (!state.is_active() || state.freeze.capturing())
             && !matches!(
                 event,
                 Event::Enter { .. } | Event::Leave { .. } | Event::Motion { .. } | Event::Frame
@@ -350,7 +365,7 @@ impl Dispatch<WlPointer, (), State> for PointerState {
             if sequence.motion.is_some() || sequence.pressed & (LEFT | RIGHT | MIDDLE) != 0 {
                 state.pointer.released_pen_tip = None;
             }
-            if !state.active || state.freeze.capturing() || state.pointer.output.is_none() {
+            if !state.is_active() || state.freeze.capturing() || state.pointer.output.is_none() {
                 state.interrupt_pointer_gesture();
                 if state.pointer.output.is_none()
                     || (sequence.left_surface && sequence.enter_serial.is_none())

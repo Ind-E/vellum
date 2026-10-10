@@ -15,6 +15,23 @@ use super::text_edit::TextEdit;
 use super::text_edit::{CursorMove, TextInputBatch};
 use crate::tool::Tool;
 
+#[derive(Default)]
+struct Document {
+    elements: Vec<Element>,
+    history: History,
+}
+
+impl Document {
+    fn clear(&mut self) -> bool {
+        if self.elements.is_empty() {
+            return false;
+        }
+        self.history
+            .record(HistoryEntry::Clear(std::mem::take(&mut self.elements)));
+        true
+    }
+}
+
 pub(crate) enum Action {
     Undo,
     Redo,
@@ -43,10 +60,11 @@ pub(super) struct Editor {
     tool: Tool,
     style: Style,
     // IDs increase on insertion; undo restores the original order.
-    elements: Vec<Element>,
+    document: Document,
+    other_document: Document,
+    pub(in crate::draw) canvas: super::Canvas,
     selected: Vec<ElementId>,
     interaction: Option<Interaction>,
-    history: History,
     next_id: ElementId,
     next_text_session: u64,
     picker: Option<Picker>,
@@ -64,6 +82,29 @@ pub(super) struct Editor {
 }
 
 impl Editor {
+    pub(in crate::draw) fn switch_canvas(&mut self, canvas: super::Canvas) {
+        if self.canvas != canvas {
+            std::mem::swap(&mut self.document, &mut self.other_document);
+            self.canvas = canvas;
+        }
+    }
+
+    pub(in crate::draw) fn canvas_elements(&self, canvas: super::Canvas) -> &[Element] {
+        if self.canvas == canvas {
+            &self.document.elements
+        } else {
+            &self.other_document.elements
+        }
+    }
+
+    pub(in crate::draw) fn clear_whiteboard(&mut self) -> bool {
+        if self.canvas == super::Canvas::Whiteboard {
+            self.clear()
+        } else {
+            self.other_document.clear()
+        }
+    }
+
     pub(in crate::draw) fn new(settings: crate::config::Settings) -> Self {
         let default_tool_properties = ToolPropertySet::new(
             settings.stroke_size,
@@ -89,10 +130,11 @@ impl Editor {
                 roundness: active.roundness,
                 filled: active.filled,
             },
-            elements: Vec::new(),
+            document: Document::default(),
+            other_document: Document::default(),
+            canvas: super::Canvas::Desktop,
             selected: Vec::new(),
             interaction: None,
-            history: History::default(),
             next_id: 1,
             next_text_session: 1,
             picker: None,

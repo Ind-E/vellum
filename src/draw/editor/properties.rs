@@ -582,7 +582,7 @@ impl Editor {
         }
         let changed = !updates.is_empty();
         if changed {
-            self.history.record(HistoryEntry::Update(updates));
+            self.document.history.record(HistoryEntry::Update(updates));
         }
         Adjustment {
             changed,

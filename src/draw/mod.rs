@@ -90,6 +90,18 @@ impl Cursor {
 
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(530);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Canvas {
+    Desktop,
+    Whiteboard,
+}
+
+pub(crate) struct Presentation {
+    pub canvas: Option<Canvas>,
+    pub interactive: bool,
+    pub background: Option<crate::Rgba>,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Modifiers {
     pub shift: bool,
@@ -125,6 +137,16 @@ pub(crate) struct DrawState {
 }
 
 impl DrawState {
+    pub(crate) fn switch_canvas(&mut self, canvas: Canvas) {
+        self.editor.switch_canvas(canvas);
+        self.record(true);
+    }
+
+    pub(crate) fn clear_whiteboard(&mut self) -> bool {
+        let changed = self.editor.clear_whiteboard();
+        self.record(changed)
+    }
+
     pub(super) fn new(settings: crate::config::Settings) -> Self {
         let feedback_duration = settings.feedback_duration;
         let editor = Editor::new(settings);

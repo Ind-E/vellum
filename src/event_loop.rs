@@ -105,6 +105,8 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
                         state.set_input_active(false);
                     }
                     Command::SetColor { color } => state.set_current_color(color),
+                    Command::Whiteboard { command } => state.whiteboard(command),
+                    Command::Annotations { command } => state.annotations(command),
                     Command::IsActive | Command::IsTextEditing => {
                         let active = match command {
                             Command::IsActive => state.is_active(),

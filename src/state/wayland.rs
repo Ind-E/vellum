@@ -89,13 +89,17 @@ impl State {
                 text_input
             });
         let output_globals = globals.contents().clone_list();
+        let annotations_visible = settings.annotations_visible;
+        let whiteboard_color = settings.whiteboard_color;
         let draw_on = settings.draw_on;
         let clear_on_escape = settings.clear_on_escape;
         let freeze = freeze::Freeze::new(settings.freeze_on_activate);
 
         let mut state = Self {
             fatal_error: None,
-            active: false,
+            mode: super::Mode::Inactive,
+            annotations_visible,
+            whiteboard_color,
             draw_on,
             selected_output: None,
             input_output: None,

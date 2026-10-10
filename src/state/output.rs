@@ -30,7 +30,7 @@ pub(super) struct Output {
     pub(super) surface: WlSurface,
     pub(super) layer_surface: ZwlrLayerSurfaceV1,
     pub(super) frame_pending: bool,
-    pub(super) input_pending: bool,
+    pub(super) commit_pending: bool,
     pub(super) input_state: (bool, bool),
     pub(super) render_retry: Option<std::time::Instant>,
     pub(super) wgpu: Option<WgpuState>,
@@ -128,7 +128,7 @@ impl State {
                 surface,
                 layer_surface,
                 frame_pending: false,
-                input_pending: false,
+                commit_pending: false,
                 input_state: (false, false),
                 render_retry: None,
                 wgpu: None,
@@ -139,12 +139,20 @@ impl State {
         if self.keyboard_output.is_none() {
             self.keyboard_output = Some(id);
         }
-        if self.active {
+        if self.is_active() {
             self.update_output_input();
         }
     }
 
     pub(super) fn remove_output(&mut self, id: OutputId) {
+        if self.selected_output == Some(id) {
+            self.pending_pen_motion.reset(None);
+            self.keyboard.cancel_repeat();
+            self.pointer.suppress_gesture();
+            self.tablet.suppress_gestures();
+            self.draw.deactivate();
+            self.sync_text_input();
+        }
         let pointer_position = self.pointer.remove_output(id);
         let pointer_owned_gesture = !self.tablet.input_grab_active();
         let tablet_position = self.tablet.remove_output(id);
@@ -175,6 +183,7 @@ impl State {
 
         if self.selected_output == Some(id) {
             self.selected_output = None;
+            self.damage_presentation();
         }
         if self.input_output == Some(id) {
             self.input_output = self.wayland.outputs.keys().next().copied();
@@ -182,7 +191,7 @@ impl State {
         if self.keyboard_output == Some(id) {
             self.keyboard_output = self.wayland.outputs.keys().next().copied();
         }
-        if self.active {
+        if self.is_active() {
             self.update_output_input();
         }
         self.refresh_cursor();

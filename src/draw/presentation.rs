@@ -14,6 +14,7 @@ impl DrawState {
         output: OutputId,
         origin: Point,
         scale: [f64; 2],
+        presentation: super::Presentation,
         wgpu: &mut WgpuState,
         before_present: impl FnOnce(Option<TextInputSnapshot<'_>>),
     ) -> Result<(), String> {
@@ -33,12 +34,23 @@ impl DrawState {
             max: Point::new(viewport.x1 as f32, viewport.y1 as f32),
         }
         .expanded(1.0);
-        let active_text = self.editor.text_edit();
+        let active_canvas = presentation.canvas == Some(self.editor.canvas);
+        let active_text = active_canvas.then(|| self.editor.text_edit()).flatten();
+        let elements = presentation
+            .canvas
+            .map(|canvas| self.editor.canvas_elements(canvas))
+            .unwrap_or_default();
         let items = {
-            let mut items = Vec::with_capacity(self.editor.elements().len());
-            for element in self.editor.elements() {
-                let preview = self.editor.resize_preview(element.id);
-                let offset = self.editor.moving_offset(element.id).unwrap_or_default();
+            let mut items = Vec::with_capacity(elements.len());
+            for element in elements {
+                let preview = active_canvas
+                    .then(|| self.editor.resize_preview(element.id))
+                    .flatten();
+                let offset = if active_canvas {
+                    self.editor.moving_offset(element.id).unwrap_or_default()
+                } else {
+                    Point::default()
+                };
                 let bounds = preview.map_or(element.bounds, |current| current.bounds);
                 let bounds = scene::Bounds {
                     min: bounds.min + offset,
@@ -89,7 +101,7 @@ impl DrawState {
                 text: content,
                 anchor: at,
                 ..
-            }) = &self.feedback
+            }) = self.feedback.as_ref().filter(|_| presentation.interactive)
             {
                 for [x, y] in [[15.0, 16.0], [17.0, 16.0], [16.0, 15.0], [16.0, 17.0]] {
                     items.push(SceneItem::Text(TextSpec {
@@ -119,7 +131,7 @@ impl DrawState {
 
         self.previews.clear();
         let mut cursor_rectangle = None;
-        if let Some(edit) = self.editor.text_edit() {
+        if let Some(edit) = active_text.filter(|_| presentation.interactive) {
             let [scale_x, scale_y] = edit.scale;
             let [x, y] = edit.cursor_position();
             cursor_rectangle = Some(text_cursor_rectangle(
@@ -145,33 +157,39 @@ impl DrawState {
                 ));
             });
         }
-        self.editor.append_preview_geometry(&mut self.previews);
-        self.editor
-            .append_selection_geometry(self.feedback.is_none(), &mut self.previews);
-        if let Some((point, cursor)) = self.tool_cursor {
-            self.previews.push(tool_cursor_geometry(point, cursor));
+        if active_canvas {
+            self.editor.append_preview_geometry(&mut self.previews);
+        }
+        if presentation.interactive {
+            self.editor
+                .append_selection_geometry(self.feedback.is_none(), &mut self.previews);
+            if let Some((point, cursor)) = self.tool_cursor {
+                self.previews.push(tool_cursor_geometry(point, cursor));
+            }
         }
         self.previews.retain(|geometry| {
             geometry
                 .bounds()
                 .is_some_and(|bounds| bounds.inflate(1.0, 1.0).intersect(viewport).area() > 0.0)
         });
-        let picker = self.editor.picker_geometry(viewport);
+        let picker = presentation
+            .interactive
+            .then(|| self.editor.picker_geometry(viewport))
+            .flatten();
         if wgpu.render(
             &items,
             &self.previews,
             picker.as_ref(),
             Viewport {
+                background: presentation.background,
                 origin: [origin.x, origin.y],
                 scale,
             },
-            self.editor
-                .text_edit()
-                .map(|edit| (edit.id.unwrap_or(0), edit.layout())),
+            active_text.map(|edit| (edit.id.unwrap_or(0), edit.layout())),
             || {
                 before_present(
-                    self.editor
-                        .text_edit()
+                    active_text
+                        .filter(|_| presentation.interactive)
                         .map(|edit| edit.snapshot(cursor_rectangle)),
                 );
             },

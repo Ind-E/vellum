@@ -20,6 +20,7 @@ const FROZEN_TEXTURE: vello_hybrid::TextureId = vello_hybrid::TextureId(1);
 pub(crate) struct Viewport {
     pub origin: [f32; 2],
     pub scale: [f64; 2],
+    pub background: Option<crate::Rgba>,
 }
 
 pub(crate) enum SceneItem<'a> {
@@ -240,6 +241,7 @@ impl WgpuState {
         let Viewport {
             origin: viewport_origin,
             scale,
+            background,
         } = viewport;
         let Some(output) = self.acquire_frame()? else {
             return Ok(false);
@@ -248,7 +250,17 @@ impl WgpuState {
         // Creation and resize validate these dimensions.
         let main_size = self.size().map(|dimension| dimension as u16);
         self.main_scene.reset_and_resize(main_size[0], main_size[1]);
-        if let Some(background) = &self.frozen {
+        if let Some(color) = background {
+            self.main_scene.set_transform(Affine::IDENTITY);
+            self.main_scene
+                .set_paint(vello_color(color, self.surface_config.format.is_srgb()));
+            self.main_scene.fill_rect(&kurbo::Rect::new(
+                0.0,
+                0.0,
+                f64::from(main_size[0]),
+                f64::from(main_size[1]),
+            ));
+        } else if let Some(background) = &self.frozen {
             self.main_scene.set_transform(Affine::IDENTITY);
             self.main_scene.draw_texture_rects(
                 FROZEN_TEXTURE,

@@ -10,15 +10,35 @@ use color::DynamicColor;
 use wayland_client::QueueHandle;
 
 use crate::OutputId;
+use crate::cli::{VisibilityCommand, WhiteboardCommand};
 use crate::config::DrawOn;
-use crate::draw::{self, Action};
+use crate::draw::{self, Action, Canvas, Presentation};
 use crate::render::GpuContext;
 use input::PendingPenMotion;
 use wayland::WaylandState;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Inactive,
+    Desktop,
+    Whiteboard,
+}
+
+impl Mode {
+    fn canvas(self) -> Canvas {
+        if self == Self::Whiteboard {
+            Canvas::Whiteboard
+        } else {
+            Canvas::Desktop
+        }
+    }
+}
+
 pub(crate) struct State {
     pub fatal_error: Option<String>,
-    active: bool,
+    mode: Mode,
+    annotations_visible: bool,
+    whiteboard_color: crate::Rgba,
     draw_on: DrawOn,
     selected_output: Option<OutputId>,
     input_output: Option<OutputId>,
@@ -41,11 +61,11 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn toggle_input(&mut self) {
-        self.set_input_active(!self.active);
+        self.set_input_active(!self.is_active());
     }
 
     pub(crate) fn is_active(&self) -> bool {
-        self.active
+        self.mode != Mode::Inactive
     }
 
     pub(crate) fn is_text_editing(&self) -> bool {
@@ -53,56 +73,136 @@ impl State {
     }
 
     pub(crate) fn set_input_active(&mut self, active: bool) {
-        if active == self.active {
-            return;
-        }
-        log::debug!("setting drawing mode active={active}");
-        if active {
-            self.activate();
-        } else {
+        if !active {
             self.deactivate();
-        }
-        log::debug!("drawing mode active={}", self.active);
-    }
-
-    fn activate(&mut self) {
-        self.active = true;
-        self.selected_output = None;
-        if self
-            .keyboard_output
-            .is_none_or(|output| !self.wayland.outputs.contains_key(&output))
-        {
-            self.keyboard_output = self.wayland.outputs.keys().next().copied();
-        }
-        self.update_output_input();
-        if self.draw.activate() {
-            self.request_render();
-        }
-        self.refresh_cursor();
-        if self.freeze.on_activate {
-            self.start_freeze();
+        } else if !self.is_active() {
+            self.set_mode(Mode::Desktop);
         }
     }
 
     fn deactivate(&mut self) {
+        self.set_mode(Mode::Inactive);
+    }
+
+    fn set_mode(&mut self, mode: Mode) {
+        if self.mode == mode {
+            return;
+        }
+        let was_active = self.is_active();
         self.stop_freeze(true);
-        self.flush_pen_motion();
-        self.keyboard.cancel_repeat();
-        self.pointer.cancel_gesture();
-        self.tablet.cancel_gesture();
         self.pending_pen_motion.reset(None);
+        self.keyboard.cancel_repeat();
+        if was_active && mode != Mode::Inactive {
+            self.pointer.suppress_gesture();
+            self.tablet.suppress_gestures();
+        } else {
+            self.pointer.cancel_gesture();
+            self.tablet.cancel_gesture();
+        }
         self.draw.deactivate();
+        self.sync_text_input();
+        self.draw.switch_canvas(mode.canvas());
+        self.mode = mode;
+        if !was_active || !self.is_active() {
+            self.selected_output = None;
+        }
         for output in self.wayland.outputs.values_mut() {
             if let Some(wgpu) = &mut output.wgpu {
                 wgpu.release_picker_target();
             }
         }
-        self.pointer.restore_cursor();
-        self.tablet.restore_cursors();
-        self.active = false;
-        self.selected_output = None;
-        // Commit input release and replacement of frozen content together.
+        if self.is_active() {
+            if !was_active {
+                self.draw.activate();
+            }
+            if self
+                .keyboard_output
+                .is_none_or(|id| !self.wayland.outputs.contains_key(&id))
+            {
+                self.keyboard_output = self.wayland.outputs.keys().next().copied();
+            }
+        } else {
+            self.pointer.restore_cursor();
+            self.tablet.restore_cursors();
+        }
         self.update_output_input();
+        self.damage_presentation();
+        self.refresh_cursor();
+        if !was_active && mode == Mode::Desktop && self.freeze.on_activate {
+            self.start_freeze();
+        }
+    }
+
+    pub(crate) fn whiteboard(&mut self, command: WhiteboardCommand) {
+        match command {
+            WhiteboardCommand::Show => self.set_mode(Mode::Whiteboard),
+            WhiteboardCommand::Hide if self.mode == Mode::Whiteboard => {
+                self.set_mode(Mode::Desktop)
+            }
+            WhiteboardCommand::Hide => {}
+            WhiteboardCommand::Toggle => self.toggle_whiteboard(),
+            WhiteboardCommand::Clear => {
+                if self.mode == Mode::Whiteboard {
+                    self.clear();
+                } else if self.draw.clear_whiteboard() {
+                    self.request_render();
+                }
+            }
+            WhiteboardCommand::SetColor { color } => {
+                let color = crate::color_to_srgb(color);
+                if self.whiteboard_color != color {
+                    self.whiteboard_color = color;
+                    if self.mode == Mode::Whiteboard {
+                        self.damage_presentation();
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn toggle_whiteboard(&mut self) {
+        self.set_mode(if self.mode == Mode::Whiteboard {
+            Mode::Desktop
+        } else {
+            Mode::Whiteboard
+        });
+    }
+
+    pub(crate) fn annotations(&mut self, command: VisibilityCommand) {
+        let visible = match command {
+            VisibilityCommand::Show => true,
+            VisibilityCommand::Hide => false,
+            VisibilityCommand::Toggle => !self.annotations_visible,
+        };
+        if self.annotations_visible != visible {
+            self.annotations_visible = visible;
+            self.damage_presentation();
+        }
+    }
+
+    fn presentation(&self, output: OutputId) -> Presentation {
+        let selected = self.draw_on == DrawOn::All || self.selected_output == Some(output);
+        let board = self.mode == Mode::Whiteboard && selected;
+        let desktop_drawing = self.mode == Mode::Desktop;
+        Presentation {
+            canvas: if board {
+                Some(Canvas::Whiteboard)
+            } else if desktop_drawing || self.annotations_visible {
+                Some(Canvas::Desktop)
+            } else {
+                None
+            },
+            interactive: self.is_active() && selected,
+            background: board.then_some(self.whiteboard_color),
+        }
+    }
+
+    fn damage_presentation(&mut self) {
+        for (&id, output) in &mut self.wayland.outputs {
+            output.commit_pending = true;
+            self.draw.damage(id);
+        }
+        self.request_render();
     }
 
     pub(crate) fn clear(&mut self) {

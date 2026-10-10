@@ -142,6 +142,16 @@ impl TabletState {
         }
     }
 
+    pub(in crate::state) fn suppress_gestures(&mut self) {
+        self.gesture_owner = None;
+        for tool in self.tools.values_mut() {
+            tool.event_sequence.pressed = 0;
+            tool.event_sequence.released = 0;
+            tool.suppressed_gesture = tool.pen_held || tool.buttons_held != 0;
+            tool.button_press_time = None;
+        }
+    }
+
     pub(in crate::state) fn remove_output(&mut self, output: OutputId) -> Option<(f64, f64)> {
         let mut end_position = None;
         for (id, tool) in &mut self.tools {
@@ -272,7 +282,7 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
         _qhandle: &QueueHandle<State>,
     ) {
         use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_tool_v2::{Event, Type};
-        if (!state.active || state.freeze.capturing())
+        if (!state.is_active() || state.freeze.capturing())
             && matches!(event, Event::Down { .. } | Event::Up | Event::Button { .. })
         {
             return;
@@ -310,6 +320,7 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
         let origin = output
             .map(|output| state.output_origin(output))
             .unwrap_or_default();
+        let active = state.is_active();
         let tool = state.tablet.tools.get_mut(&id).unwrap();
         if let Some(sequence) = tool.event_sequence.dispatch(
             event,
@@ -326,7 +337,7 @@ impl Dispatch<ZwpTabletToolV2, (), State> for TabletState {
                 tool.current_cursor = None;
                 tool.output = None;
             }
-            if !state.active || state.freeze.capturing() || output.is_none() {
+            if !active || state.freeze.capturing() || output.is_none() {
                 tool.pen_held = false;
                 tool.buttons_held = 0;
                 tool.suppressed_gesture = false;

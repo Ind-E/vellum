@@ -37,11 +37,20 @@ struct FileConfig {
     feedback_duration_ms: Option<u64>,
     clear_on_escape: Option<bool>,
     freeze_on_activate: Option<bool>,
+    annotations_visible: Option<bool>,
+    #[serde(default)]
+    whiteboard: WhiteboardConfig,
     default_fill_shapes: Option<bool>,
     #[serde(default)]
     cursor: CursorVisibility,
     #[serde(default)]
     tools: ToolDefaults,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WhiteboardConfig {
+    color: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
@@ -341,6 +350,8 @@ pub(super) struct Settings {
     pub(super) feedback_duration: Duration,
     pub(super) clear_on_escape: bool,
     pub(super) freeze_on_activate: bool,
+    pub(super) annotations_visible: bool,
+    pub(super) whiteboard_color: Rgba,
     pub(super) default_fill_shapes: bool,
     pub(super) tool_defaults: ToolDefaults,
     pub(super) cursor: CursorVisibility,
@@ -439,6 +450,11 @@ impl Settings {
             feedback_duration: Duration::from_millis(feedback_duration_ms),
             clear_on_escape: file.clear_on_escape.unwrap_or(false),
             freeze_on_activate: file.freeze_on_activate.unwrap_or(false),
+            annotations_visible: file.annotations_visible.unwrap_or(true),
+            whiteboard_color: crate::color_to_srgb(
+                crate::cli::opaque_color(file.whiteboard.color.as_deref().unwrap_or("#EBEBEB"))
+                    .map_err(|error| format!("whiteboard.color: {error}"))?,
+            ),
             default_fill_shapes: file.default_fill_shapes.unwrap_or(false),
             tool_defaults: file.tools,
             cursor: file.cursor,

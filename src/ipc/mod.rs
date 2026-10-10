@@ -12,7 +12,7 @@ use rustix::net::{
     RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, SocketAddrAny, SocketAddrUnix,
 };
 
-use crate::cli::Command;
+use crate::cli::{Command, VisibilityCommand, WhiteboardCommand};
 
 pub(crate) fn control_socket_name() -> Vec<u8> {
     use std::os::unix::ffi::OsStrExt;
@@ -85,6 +85,18 @@ impl Command {
             Self::SetColor { color } => format!("set_color={color}").into(),
             Self::IsTextEditing => "is_text_editing".into(),
             Self::Exit => "exit".into(),
+            Self::Annotations { command } => match command {
+                VisibilityCommand::Show => "annotations_show".into(),
+                VisibilityCommand::Hide => "annotations_hide".into(),
+                VisibilityCommand::Toggle => "annotations_toggle".into(),
+            },
+            Self::Whiteboard { command } => match command {
+                WhiteboardCommand::Show => "whiteboard_show".into(),
+                WhiteboardCommand::Hide => "whiteboard_hide".into(),
+                WhiteboardCommand::Toggle => "whiteboard_toggle".into(),
+                WhiteboardCommand::Clear => "whiteboard_clear".into(),
+                WhiteboardCommand::SetColor { color } => format!("whiteboard_color={color}").into(),
+            },
         }
     }
 
@@ -98,6 +110,36 @@ impl Command {
             b"is_active" => Ok(Self::IsActive),
             b"is_text_editing" => Ok(Self::IsTextEditing),
             b"exit" => Ok(Self::Exit),
+            b"annotations_show" => Ok(Self::Annotations {
+                command: VisibilityCommand::Show,
+            }),
+            b"annotations_hide" => Ok(Self::Annotations {
+                command: VisibilityCommand::Hide,
+            }),
+            b"annotations_toggle" => Ok(Self::Annotations {
+                command: VisibilityCommand::Toggle,
+            }),
+            b"whiteboard_show" => Ok(Self::Whiteboard {
+                command: WhiteboardCommand::Show,
+            }),
+            b"whiteboard_hide" => Ok(Self::Whiteboard {
+                command: WhiteboardCommand::Hide,
+            }),
+            b"whiteboard_toggle" => Ok(Self::Whiteboard {
+                command: WhiteboardCommand::Toggle,
+            }),
+            b"whiteboard_clear" => Ok(Self::Whiteboard {
+                command: WhiteboardCommand::Clear,
+            }),
+            _ if let Some(color) = message.strip_prefix(b"whiteboard_color=") => {
+                let value =
+                    std::str::from_utf8(color).map_err(|_| "expected color to be valid utf8")?;
+                let color = crate::cli::opaque_color(value)
+                    .map_err(|_| "invalid or transparent whiteboard color")?;
+                Ok(Self::Whiteboard {
+                    command: WhiteboardCommand::SetColor { color },
+                })
+            }
             _ if let Some(color) = message.strip_prefix(b"set_color=") => Ok(Self::SetColor {
                 color: color_from_utf8(color)?,
             }),

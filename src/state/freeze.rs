@@ -135,6 +135,9 @@ impl Freeze {
 
 impl State {
     pub(super) fn toggle_freeze(&mut self) {
+        if self.mode == super::Mode::Whiteboard {
+            return;
+        }
         if !self.freeze.capturing()
             && (self.draw.is_editing_text()
                 || self.draw.picker_active()

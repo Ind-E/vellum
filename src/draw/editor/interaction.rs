@@ -305,7 +305,7 @@ impl Editor {
                         elements.push((id, kind, style));
                     }
                     if !elements.is_empty() {
-                        self.history.record(HistoryEntry::Update(elements));
+                        self.document.history.record(HistoryEntry::Update(elements));
                     }
                 }
                 true
@@ -332,7 +332,7 @@ impl Editor {
                     && let Some(element) = self.element_mut(id)
                 {
                     element.replace(current.kind, current.style);
-                    self.history.record(HistoryEntry::Update(vec![(
+                    self.document.history.record(HistoryEntry::Update(vec![(
                         id,
                         original.kind,
                         original.style,

@@ -3,10 +3,6 @@ use crate::draw::scene::{Element, ElementId, ElementKind, Point, Style};
 use crate::draw::text_edit::TextEdit;
 
 impl Editor {
-    pub(in crate::draw) fn elements(&self) -> &[Element] {
-        &self.elements
-    }
-
     /// Returns None for a miss, or Some(changed) when the text edit handles the click.
     pub(in crate::draw) fn text_click_at(&mut self, point: Point, clicks: u8) -> Option<bool> {
         if let Some(edit) = self.text_edit_mut() {
@@ -34,7 +30,8 @@ impl Editor {
     }
 
     pub(in crate::draw) fn hit_test(&self, point: Point) -> Option<ElementId> {
-        self.elements
+        self.document
+            .elements
             .iter()
             .rev()
             .find(|element| element.hit_test(point))
@@ -43,7 +40,7 @@ impl Editor {
 
     pub(in crate::draw) fn undo(&mut self) -> bool {
         let cancelled = self.cancel_interaction();
-        if !self.history.undo(&mut self.elements) {
+        if !self.document.history.undo(&mut self.document.elements) {
             return cancelled;
         }
         self.selected.clear();
@@ -52,7 +49,7 @@ impl Editor {
 
     pub(in crate::draw) fn redo(&mut self) -> bool {
         let cancelled = self.cancel_interaction();
-        if !self.history.redo(&mut self.elements) {
+        if !self.document.history.redo(&mut self.document.elements) {
             return cancelled;
         }
         self.selected.clear();
@@ -61,11 +58,16 @@ impl Editor {
 
     pub(super) fn select_all(&mut self) -> bool {
         let cancelled = self.cancel_interaction();
-        if self.elements.is_empty() {
+        if self.document.elements.is_empty() {
             return cancelled;
         }
         let changed = cancelled | self.switch_tool(crate::tool::Tool::Select);
-        let selected = self.elements.iter().map(|element| element.id).collect();
+        let selected = self
+            .document
+            .elements
+            .iter()
+            .map(|element| element.id)
+            .collect();
         if self.selected == selected {
             return changed;
         }
@@ -75,13 +77,9 @@ impl Editor {
 
     pub(super) fn clear(&mut self) -> bool {
         let cancelled = self.cancel_interaction();
-        if self.elements.is_empty() {
-            return cancelled;
-        }
-        let elements = std::mem::take(&mut self.elements);
-        self.history.record(HistoryEntry::Clear(elements));
+        let cleared = self.document.clear();
         self.selected.clear();
-        true
+        cancelled | cleared
     }
 
     pub(super) fn delete_selection(&mut self) -> bool {
@@ -90,9 +88,9 @@ impl Editor {
             return false;
         }
         let cancelled = self.cancel_interaction();
-        if selected.len() == self.elements.len() {
-            let elements = std::mem::take(&mut self.elements);
-            self.history.record(HistoryEntry::Clear(elements));
+        if selected.len() == self.document.elements.len() {
+            let elements = std::mem::take(&mut self.document.elements);
+            self.document.history.record(HistoryEntry::Clear(elements));
             return true;
         }
         cancelled | self.remove_ids(&selected)
@@ -102,7 +100,8 @@ impl Editor {
         let mut indices: Vec<_> = ids
             .iter()
             .filter_map(|id| {
-                self.elements
+                self.document
+                    .elements
                     .binary_search_by_key(id, |element| element.id)
                     .ok()
             })
@@ -116,6 +115,7 @@ impl Editor {
         let mut index = indices[0];
         let end = indices[indices.len() - 1] + 1;
         let removed = self
+            .document
             .elements
             .extract_if(index..end, |_| {
                 let remove = next.next_if_eq(&index).is_some();
@@ -125,9 +125,10 @@ impl Editor {
             .zip(indices.iter().copied())
             .map(|(element, index)| (index, element))
             .collect();
-        self.history.record(HistoryEntry::Remove(removed));
+        self.document.history.record(HistoryEntry::Remove(removed));
         self.selected.retain(|id| {
-            self.elements
+            self.document
+                .elements
                 .binary_search_by_key(id, |element| element.id)
                 .is_ok()
         });
@@ -140,9 +141,11 @@ impl Editor {
 
     pub(super) fn insert_element(&mut self, element: Element) {
         self.next_id += 1;
-        let index = self.elements.len();
-        self.elements.push(element);
-        self.history.record(HistoryEntry::Insert(vec![index]));
+        let index = self.document.elements.len();
+        self.document.elements.push(element);
+        self.document
+            .history
+            .record(HistoryEntry::Insert(vec![index]));
     }
 
     fn remove_id(&mut self, id: ElementId) -> bool {
@@ -156,6 +159,7 @@ impl Editor {
             .size
             * 0.5;
         let hits = self
+            .document
             .elements
             .iter()
             .filter(|element| element.erase_hit_test(start, end, radius))
@@ -193,7 +197,8 @@ impl Editor {
                 return true;
             }
             let (kind, style) = element.replace(kind, style);
-            self.history
+            self.document
+                .history
                 .record(HistoryEntry::Update(vec![(id, kind, style)]));
         } else {
             self.insert_kind(kind, style);
@@ -219,16 +224,18 @@ impl Editor {
     }
 
     pub(super) fn element(&self, id: ElementId) -> Option<&Element> {
-        self.elements
+        self.document
+            .elements
             .binary_search_by_key(&id, |element| element.id)
             .ok()
-            .map(|index| &self.elements[index])
+            .map(|index| &self.document.elements[index])
     }
 
     pub(super) fn element_mut(&mut self, id: ElementId) -> Option<&mut Element> {
-        self.elements
+        self.document
+            .elements
             .binary_search_by_key(&id, |element| element.id)
             .ok()
-            .map(|index| &mut self.elements[index])
+            .map(|index| &mut self.document.elements[index])
     }
 }

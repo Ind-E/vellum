@@ -79,7 +79,7 @@ impl PendingPenMotion {
 
 impl State {
     pub(super) fn focus_output(&mut self, output: OutputId) {
-        if !self.active || !self.wayland.outputs.contains_key(&output) {
+        if !self.is_active() || !self.wayland.outputs.contains_key(&output) {
             return;
         }
         let selection_changed =
@@ -91,6 +91,9 @@ impl State {
                 return;
             }
             self.selected_output = Some(output);
+            if selection_changed {
+                self.damage_presentation();
+            }
         }
         self.input_output = Some(output);
         self.freeze_output_selected();
@@ -125,9 +128,10 @@ impl State {
 
     pub(super) fn update_output_input(&mut self) {
         let mut empty_region = None;
+        let active = self.is_active();
         let input_grab_active = self.pointer.input_grab_active() || self.tablet.input_grab_active();
         for (&id, output) in &mut self.wayland.outputs {
-            let accepts_input = self.active
+            let accepts_input = active
                 && match self.draw_on {
                     DrawOn::All => true,
                     DrawOn::Current => {
@@ -158,7 +162,7 @@ impl State {
             // input changes with a buffer instead of issuing an empty commit.
             // An idle/occluded surface may still owe a frame callback, so input
             // changes must be able to bypass normal frame throttling.
-            output.input_pending = true;
+            output.commit_pending = true;
             self.draw.damage(id);
         }
         if let Some(empty_region) = empty_region {
@@ -356,7 +360,7 @@ impl State {
     }
 
     pub(super) fn refresh_cursor(&mut self) {
-        if !self.active {
+        if !self.is_active() {
             self.clear_tool_cursor();
             return;
         }

@@ -41,6 +41,54 @@ pub(crate) enum Command {
     IsActive,
     /// Report whether text is being edited
     IsTextEditing,
+    /// Manage the whiteboard
+    Whiteboard {
+        #[command(subcommand)]
+        command: WhiteboardCommand,
+    },
+    /// Manage desktop annotations
+    Annotations {
+        #[command(subcommand)]
+        command: VisibilityCommand,
+    },
     /// Stop Vellum
     Exit,
+}
+
+#[derive(clap::Subcommand)]
+pub(crate) enum VisibilityCommand {
+    /// Show desktop annotations
+    Show,
+    /// Hide desktop annotations
+    Hide,
+    /// Toggle desktop annotations
+    Toggle,
+}
+
+#[derive(clap::Subcommand)]
+pub(crate) enum WhiteboardCommand {
+    /// Show the board
+    Show,
+    /// Hide the board
+    Hide,
+    /// Toggle the board
+    Toggle,
+    /// Clear the board's annotations
+    Clear,
+    /// Set the board's background color
+    SetColor {
+        /// Opaque CSS color, such as `white`, `#EBEBEB`, or `oklab(0.5 0.2 0)`
+        #[arg(value_parser = opaque_color)]
+        color: DynamicColor,
+    },
+}
+
+pub(crate) fn opaque_color(value: &str) -> Result<DynamicColor, String> {
+    let color: DynamicColor = value
+        .parse()
+        .map_err(|error| format!("invalid color: {error}"))?;
+    if color.components[3] != 1.0 {
+        return Err("whiteboard color must be opaque".into());
+    }
+    Ok(color)
 }

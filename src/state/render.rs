@@ -17,6 +17,7 @@ impl State {
         if self.fatal_error.is_some() || self.freeze.hides(output) {
             return;
         }
+        let presentation = self.presentation(output);
         if let Some(output_state) = self.wayland.outputs.get_mut(&output) {
             log::trace!("rendering output {output} ({:?})", output_state.name);
             let scale = output_state.render_scale();
@@ -27,21 +28,25 @@ impl State {
             let proxy = self.wayland.text_input.as_ref();
             let surface = &output_state.surface;
             let frame_pending = &mut output_state.frame_pending;
-            let input_pending = &mut output_state.input_pending;
+            let commit_pending = &mut output_state.commit_pending;
             let qhandle = &self.qhandle;
-            if let Err(error) =
-                self.draw
-                    .render(output, output_state.origin, scale, wgpu, |snapshot| {
-                        text_input.sync_render(proxy, output, snapshot);
-                        *input_pending = false;
-                        // Request the callback only once acquisition and rendering
-                        // succeeded, so Vulkan commits it with the new buffer.
-                        if !*frame_pending {
-                            surface.frame(qhandle, output);
-                            *frame_pending = true;
-                        }
-                    })
-            {
+            if let Err(error) = self.draw.render(
+                output,
+                output_state.origin,
+                scale,
+                presentation,
+                wgpu,
+                |snapshot| {
+                    text_input.sync_render(proxy, output, snapshot);
+                    *commit_pending = false;
+                    // Request the callback only once acquisition and rendering
+                    // succeeded, so Vulkan commits it with the new buffer.
+                    if !*frame_pending {
+                        surface.frame(qhandle, output);
+                        *frame_pending = true;
+                    }
+                },
+            ) {
                 self.fatal_error = Some(error);
                 return;
             }
@@ -65,7 +70,7 @@ impl State {
             output.wgpu.is_some()
                 && match output.render_retry {
                     Some(deadline) => now >= deadline,
-                    None => !output.frame_pending || output.input_pending,
+                    None => !output.frame_pending || output.commit_pending,
                 }
         };
         // Advance stroke samples when the input output can present, including

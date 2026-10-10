@@ -3,11 +3,13 @@ stroke_size = 5
 default_tool = "pen"
 cursor.visible = true
 clear_on_escape = false
-remember_last_tool = true
 default_color = "#E84046"
+remember_last_tool = true
 feedback_duration_ms = 500
 freeze_on_activate = false
+annotations_visible = true
 default_fill_shapes = false
+whiteboard.color = "#EBEBEB"
 size_range = { min = 1, max = 100 }
 stops = { size = [], opacity = [], roundness = [] }
 steps = { size = 1, opacity = 0.01, roundness = 0.01 }
