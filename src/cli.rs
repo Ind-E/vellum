@@ -9,18 +9,18 @@ pub(super) struct Cli {
     #[command(subcommand)]
     pub(super) command: Option<Command>,
 
-    /// Read this TOML preferences file
+    /// Use this config file
     #[arg(long, conflicts_with = "no_config")]
     pub(super) config: Option<PathBuf>,
 
-    /// Ignore preferences files
+    /// Ignore config files
     #[arg(long)]
     pub(super) no_config: bool,
 }
 
 #[derive(clap::Subcommand)]
 pub(crate) enum Command {
-    /// Switch drawing mode
+    /// Toggle drawing mode
     Toggle,
     /// Activate drawing mode
     Activate,
@@ -30,16 +30,16 @@ pub(crate) enum Command {
     Clear,
     /// Clear annotations and deactivate drawing mode
     ClearAndDeactivate,
-    /// Set the current drawing color
+    /// Set the drawing color
     SetColor {
-        /// CSS color, such as `turquoise`, `#0ff8`, or `oklab(0.5 0.2 0)`
+        /// CSS color, such as `red`, `#00ffff`, or `oklab(0.5 0.2 0)`
         ///
-        /// Quote values containing `#`, spaces, or parentheses in the shell.
+        /// Quote colors containing #, spaces, or parentheses.
         color: DynamicColor,
     },
     /// Report whether drawing mode is active
     IsActive,
-    /// Report whether you are currently in a text edit
+    /// Report whether text is being edited
     IsTextEditing,
     /// Stop Vellum
     Exit,
