@@ -33,6 +33,7 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../Cargo.lock;
 
   __structuredAttrs = true;
+  strictDeps = true;
 
   nativeBuildInputs = [
     installShellFiles
@@ -75,6 +76,7 @@ rustPlatform.buildRustPackage {
   meta = {
     inherit (cargoToml.package) description;
     homepage = cargoToml.package.repository;
+    downloadPage = "${cargoToml.package.repository}/releases";
     license =
       with lib.licenses;
       AND [

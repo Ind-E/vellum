@@ -32,8 +32,7 @@ in {
       };
       description = ''
         Configuration options for vellum.
-        NixOS writes system-wide defaults, while Home Manager writes the user's configuration.
-        Per-user configuration takes precedence over system-wide defaults.
+        NixOS writes system-wide configuration, while Home Manager writes the user's configuration.
         See available options at <https://github.com/greyxp1/vellum#configuration>.
       '';
     };
