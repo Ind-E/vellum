@@ -33,7 +33,6 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../Cargo.lock;
 
   __structuredAttrs = true;
-  strictDeps = true;
 
   nativeBuildInputs = [
     installShellFiles
