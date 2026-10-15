@@ -22,7 +22,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
 
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           determinate: false
 
@@ -61,7 +61,7 @@ jobs:
         with:
           name: nix-inputs
 
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           determinate: false
 
