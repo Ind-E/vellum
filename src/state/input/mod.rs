@@ -96,7 +96,9 @@ impl State {
             }
         }
         self.input_output = Some(output);
-        self.freeze_output_selected();
+        if selection_changed {
+            self.freeze_output_selected();
+        }
         if self.draw.is_editing_text() {
             return;
         }
@@ -128,7 +130,7 @@ impl State {
 
     pub(super) fn update_output_input(&mut self) {
         let mut empty_region = None;
-        let active = self.is_active();
+        let active = self.is_active() && !self.freeze.defer_input;
         let input_grab_active = self.pointer.input_grab_active() || self.tablet.input_grab_active();
         for (&id, output) in &mut self.wayland.outputs {
             let accepts_input = active

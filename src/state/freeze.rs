@@ -18,6 +18,7 @@ enum Capture {
 
 pub(super) struct Freeze {
     pub on_activate: bool,
+    pub defer_input: bool,
     generation: u64,
     worker: Option<std::thread::JoinHandle<()>>,
     phase: Phase,
@@ -109,6 +110,7 @@ impl Freeze {
     pub fn new(on_activate: bool) -> Self {
         Self {
             on_activate,
+            defer_input: false,
             generation: 0,
             worker: None,
             phase: Phase::Live,
@@ -154,7 +156,10 @@ impl State {
     }
 
     pub(super) fn start_freeze(&mut self) {
-        if self.draw_on == DrawOn::Current && self.selected_output.is_none() {
+        if self.draw_on == DrawOn::Current
+            && self.selected_output.is_none()
+            && !self.freeze.defer_input
+        {
             self.freeze.phase = Phase::WaitingOutput;
             return;
         }
@@ -171,7 +176,11 @@ impl State {
         }
         let mut outputs = Vec::new();
         for (&id, output) in &self.wayland.outputs {
-            if self.draw_on == DrawOn::Current && self.selected_output != Some(id) {
+            // Before taking focus we cannot know which output the pointer is on.
+            // Capture all outputs, then keep only the one selected on entry.
+            if self.draw_on == DrawOn::Current
+                && self.selected_output.is_some_and(|selected| selected != id)
+            {
                 continue;
             }
             if output.wgpu.is_none() || output.name.is_empty() {
@@ -217,10 +226,22 @@ impl State {
     pub(super) fn freeze_output_selected(&mut self) {
         if matches!(self.freeze.phase, Phase::WaitingOutput) && self.selected_output.is_some() {
             self.start_freeze();
+        } else if matches!(self.freeze.phase, Phase::Frozen) && self.draw_on == DrawOn::Current {
+            for (&id, output) in &mut self.wayland.outputs {
+                if self.selected_output != Some(id)
+                    && let Some(wgpu) = &mut output.wgpu
+                    && wgpu.is_frozen()
+                {
+                    wgpu.clear_frozen_background();
+                    self.draw.damage(id);
+                }
+            }
+            self.request_render();
         }
     }
 
     pub(super) fn stop_freeze(&mut self, deactivating: bool) {
+        let deferred_input = std::mem::take(&mut self.freeze.defer_input);
         let frames = match std::mem::replace(&mut self.freeze.phase, Phase::Live) {
             Phase::Capturing { frames, .. } => frames,
             _ => BTreeMap::new(),
@@ -237,6 +258,9 @@ impl State {
             }
         }
         if !deactivating {
+            if deferred_input {
+                self.update_output_input();
+            }
             for id in damaged {
                 self.render(id);
             }
@@ -333,6 +357,12 @@ impl State {
         };
         if frames.values().all(|frame| frame.ready) {
             self.freeze.phase = Phase::Frozen;
+            if self.selected_output.is_some() {
+                self.freeze_output_selected();
+            }
+            if std::mem::take(&mut self.freeze.defer_input) {
+                self.update_output_input();
+            }
             self.request_render();
         } else if disconnected {
             self.fail_freeze("Screen freeze failed: capture worker stopped");

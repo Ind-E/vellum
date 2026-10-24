@@ -125,12 +125,13 @@ impl State {
             self.pointer.restore_cursor();
             self.tablet.restore_cursors();
         }
+        if !was_active && mode == Mode::Desktop && self.freeze.on_activate {
+            self.freeze.defer_input = true;
+            self.start_freeze();
+        }
         self.update_output_input();
         self.damage_presentation();
         self.refresh_cursor();
-        if !was_active && mode == Mode::Desktop && self.freeze.on_activate {
-            self.start_freeze();
-        }
     }
 
     pub(crate) fn whiteboard(&mut self, command: WhiteboardCommand) {
