@@ -102,8 +102,10 @@ impl State {
         let annotations_visible = settings.annotations_visible;
         let whiteboard_color = settings.whiteboard_color;
         let draw_on = settings.draw_on;
-        let clear_on_escape = settings.clear_on_escape;
+        let clear_on_cancel = settings.clear_on_cancel;
         let freeze = freeze::Freeze::new(settings.freeze_on_activate);
+        let keyboard =
+            input::KeyboardState::new(settings.keybinds.clone(), settings.text_keybinds.clone());
 
         let mut state = Self {
             fatal_error: None,
@@ -114,7 +116,7 @@ impl State {
             selected_output: None,
             input_output: None,
             keyboard_output: None,
-            clear_on_escape,
+            clear_on_cancel,
             freeze,
             pending_pen_motion: PendingPenMotion::default(),
             render_requested: false,
@@ -137,7 +139,7 @@ impl State {
                 fractional_scale_manager,
             },
             draw: draw::DrawState::new(settings),
-            keyboard: input::KeyboardState::default(),
+            keyboard,
             text_input: input::TextInputState::default(),
             pointer: input::PointerState::default(),
             tablet,

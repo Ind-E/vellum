@@ -43,7 +43,7 @@ pub(crate) struct State {
     selected_output: Option<OutputId>,
     input_output: Option<OutputId>,
     keyboard_output: Option<OutputId>,
-    clear_on_escape: bool,
+    clear_on_cancel: bool,
     freeze: freeze::Freeze,
     pending_pen_motion: PendingPenMotion,
     render_requested: bool,
@@ -87,10 +87,10 @@ impl State {
         if settings.whiteboard_color != previous.whiteboard_color {
             self.whiteboard_color = settings.whiteboard_color;
         }
-        self.clear_on_escape = settings.clear_on_escape;
+        self.clear_on_cancel = settings.clear_on_cancel;
         self.freeze.on_activate = settings.freeze_on_activate;
-        self.keyboard.cancel_repeat();
-        self.keyboard.reset_compose();
+        self.keyboard
+            .reload(settings.keybinds.clone(), settings.text_keybinds.clone());
         if settings.text_font != previous.text_font {
             crate::text::set_text_font(settings.text_font.clone());
             for output in self.wayland.outputs.values_mut() {

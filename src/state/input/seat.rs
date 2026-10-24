@@ -48,6 +48,7 @@ impl Dispatch<WlSeat, ()> for State {
         } else if !capabilities.contains(Capability::Keyboard)
             && let Some(keyboard) = state.wayland.keyboard.take()
         {
+            state.release_keyboard_gestures();
             state.keyboard.clear();
             keyboard.release();
         }

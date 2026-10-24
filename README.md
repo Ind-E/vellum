@@ -133,42 +133,18 @@ Mod+A { spawn "vellum" "toggle"; }
 | Erase | Middle drag, or middle-click then left drag | Three-finger tap to toggle, then one-finger drag | Hold the barrel button while drawing or drag with the eraser tip |
 | Change size | Mouse wheel | Two-finger scroll | Mouse wheel or trackpad scroll |
 
-### Shortcuts and modifiers
+### Gestures and modifiers
 
 | Input | Action |
 | --- | --- |
-| <kbd>Ctrl+Z</kbd> | Undo |
-| <kbd>Ctrl+Shift+Z</kbd> or <kbd>Ctrl+Y</kbd> | Redo |
-| Mouse back button | Undo |
-| Mouse forward button | Redo |
-| <kbd>Ctrl+A</kbd> | Select all annotations |
-| <kbd>Backspace</kbd> or <kbd>Delete</kbd> | Delete selected annotations |
-| <kbd>Escape</kbd> | Cancel, clear the selection, or leave drawing mode |
 | <kbd>Ctrl</kbd> + click in selection mode | Add or remove an annotation from the selection |
 | Double-click selected text | Edit it |
 | <kbd>Shift</kbd> while drawing | Constrain the shape |
 | <kbd>Alt</kbd> while drawing | Draw triangles, rectangles, and ellipses from their center |
-| <kbd>F</kbd> | Toggle shape fill or text background |
-| <kbd>Space</kbd> | Freeze or resume the desktop background |
-| <kbd>W</kbd> | Toggle the board |
 | <kbd>Ctrl</kbd> + scroll | Change opacity |
 | <kbd>Shift</kbd> + scroll | Change roundness |
 | Drag a selection handle | Reshape the selection or stretch text |
 | <kbd>Shift</kbd> + drag a text handle | Resize text without stretching |
-
-While editing text:
-
-| Input | Action |
-| --- | --- |
-| Arrow keys | Move the caret. <kbd>Ctrl+Left/Right</kbd> moves by word |
-| <kbd>Home</kbd> / <kbd>End</kbd> | Move to the line's start / end. Add <kbd>Ctrl</kbd> for the whole annotation |
-| <kbd>Shift</kbd> + navigation key | Extend the text selection |
-| <kbd>Ctrl+A</kbd> | Select all text in the annotation |
-| Click / drag | Position the caret / select text. <kbd>Shift</kbd> + click extends the selection |
-| Double-click / triple-click | Select a word / line |
-| Typing, <kbd>Backspace</kbd>, or <kbd>Delete</kbd> | Replace or delete selected text |
-| <kbd>Shift+Enter</kbd> | Insert a newline |
-| <kbd>Enter</kbd> / <kbd>Escape</kbd> | Finish / cancel editing |
 
 ## Configuration
 
@@ -190,12 +166,14 @@ Vellum looks for `vellum/config.toml` in `$XDG_CONFIG_HOME` (default `~/.config`
 | `default_color` | string | Initial [CSS color](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value#syntax). It must be present in `palette` |
 | `palette` | array of strings | Between 2 and 12 [CSS colors](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value#syntax) |
 | `feedback_duration_ms` | integer | How long property feedback remains visible, from `0` to `60000` milliseconds |
-| `clear_on_escape` | boolean | Clear annotations when Escape deactivates drawing mode |
+| `clear_on_cancel` | boolean | Clear annotations when the `cancel` action leaves drawing mode |
 | `freeze_on_activate` | boolean | Freeze the background when desktop drawing mode activates |
 | `annotations_visible` | boolean | Keep annotations visible when drawing mode is inactive |
 | `whiteboard.color` | string | Board background as an opaque CSS color |
 | `default_fill_shapes` | boolean | Initially fill triangles, rectangles, and ellipses |
 | `cursor` | table | Optional `visible` cursor override for all tools |
+| `keybinds` | table | Drawing shortcut overrides |
+| `text_keybinds` | table | Text editing shortcut overrides |
 
 #### Per-tool
 

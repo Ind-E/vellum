@@ -99,7 +99,7 @@ impl State {
         if selection_changed {
             self.freeze_output_selected();
         }
-        if self.draw.is_editing_text() {
+        if self.draw.is_editing_text() || self.pointer.keyboard_grab_active() {
             return;
         }
         if self.keyboard_output != Some(output) || selection_changed {
@@ -116,6 +116,9 @@ impl State {
     }
 
     pub(super) fn focus_keyboard_on_input(&mut self) {
+        if self.pointer.keyboard_grab_active() {
+            return;
+        }
         let Some(output) = self
             .input_output
             .filter(|output| self.wayland.outputs.contains_key(output))
@@ -201,7 +204,7 @@ impl State {
         }
         self.flush_pen_motion();
         self.pointer.clear_released_pen_tip();
-        let clear_on_escape = self.clear_on_escape && matches!(action, Action::Cancel);
+        let clear_on_cancel = self.clear_on_cancel && matches!(action, Action::Cancel);
         let anchor = self
             .pointer
             .position()
@@ -214,7 +217,7 @@ impl State {
             self.request_render();
         }
         if effect.deactivate {
-            if clear_on_escape {
+            if clear_on_cancel {
                 self.clear();
             }
             self.deactivate();

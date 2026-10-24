@@ -1,10 +1,12 @@
 mod font;
+mod keybinds;
 mod size;
 mod watch;
 
 pub(crate) use watch::Config;
 
 use font::FontConfig;
+pub(crate) use keybinds::{BindingAction, Keybinds, MouseButton};
 pub(crate) use size::SizeRange;
 use size::{SizeRangeConfig, resolve_size_ranges};
 
@@ -24,6 +26,10 @@ const DEFAULT_PALETTE: [&str; 8] = [
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FileConfig {
+    #[serde(default)]
+    keybinds: keybinds::KeybindConfig,
+    #[serde(default)]
+    text_keybinds: keybinds::KeybindConfig,
     draw_on: Option<DrawOn>,
     default_tool: Option<String>,
     remember_last_tool: Option<bool>,
@@ -37,7 +43,7 @@ struct FileConfig {
     default_color: Option<String>,
     palette: Option<Vec<String>>,
     feedback_duration_ms: Option<u64>,
-    clear_on_escape: Option<bool>,
+    clear_on_cancel: Option<bool>,
     freeze_on_activate: Option<bool>,
     annotations_visible: Option<bool>,
     #[serde(default)]
@@ -340,6 +346,8 @@ fn validate_tool_defaults(
 }
 
 pub(super) struct Settings {
+    pub(super) keybinds: Keybinds,
+    pub(super) text_keybinds: Keybinds,
     pub(super) draw_on: DrawOn,
     pub(super) stroke_size: f32,
     pub(super) size_ranges: Arc<BTreeMap<Tool, SizeRange>>,
@@ -350,7 +358,7 @@ pub(super) struct Settings {
     pub(super) remember_last_tool: bool,
     pub(super) palette: Vec<Rgba>,
     pub(super) feedback_duration: Duration,
-    pub(super) clear_on_escape: bool,
+    pub(super) clear_on_cancel: bool,
     pub(super) freeze_on_activate: bool,
     pub(super) annotations_visible: bool,
     pub(super) whiteboard_color: Rgba,
@@ -432,6 +440,8 @@ impl Settings {
             .resolve()?;
 
         Ok(Self {
+            keybinds: Keybinds::resolve(file.keybinds, false)?,
+            text_keybinds: Keybinds::resolve(file.text_keybinds, true)?,
             draw_on: file.draw_on.unwrap_or_default(),
             stroke_size,
             size_ranges,
@@ -442,7 +452,7 @@ impl Settings {
             remember_last_tool: file.remember_last_tool.unwrap_or(true),
             palette,
             feedback_duration: Duration::from_millis(feedback_duration_ms),
-            clear_on_escape: file.clear_on_escape.unwrap_or(false),
+            clear_on_cancel: file.clear_on_cancel.unwrap_or(false),
             freeze_on_activate: file.freeze_on_activate.unwrap_or(false),
             annotations_visible: file.annotations_visible.unwrap_or(true),
             whiteboard_color: crate::color_to_srgb(
