@@ -34,10 +34,27 @@ pub(super) struct Output {
     pub(super) input_state: (bool, bool),
     pub(super) render_retry: Option<std::time::Instant>,
     pub(super) wgpu: Option<WgpuState>,
+    pub(super) frozen_surface: Option<super::freeze::FrozenSurface>,
     pub(super) transform: u32,
 }
 
 impl Output {
+    pub(super) fn is_frozen(&self) -> bool {
+        self.frozen_surface
+            .as_ref()
+            .is_some_and(super::freeze::FrozenSurface::is_frozen)
+            || self.wgpu.as_ref().is_some_and(WgpuState::is_frozen)
+    }
+
+    pub(super) fn clear_frozen_background(&mut self) {
+        if let Some(surface) = &mut self.frozen_surface {
+            surface.clear();
+        }
+        if let Some(wgpu) = &mut self.wgpu {
+            wgpu.clear_frozen_background();
+        }
+    }
+
     pub(super) fn buffer_size(&self) -> [u32; 2] {
         let scale = self
             .preferred_scale
@@ -132,6 +149,7 @@ impl State {
                 input_state: (false, false),
                 render_retry: None,
                 wgpu: None,
+                frozen_surface: None,
                 transform: 0,
             },
         );
@@ -163,6 +181,7 @@ impl State {
             return;
         };
         self.invalidate_freeze();
+        output.frozen_surface.take();
         output.wgpu.take();
         if let Some(scale) = output.fractional_scale {
             scale.destroy();

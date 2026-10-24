@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libfontconfig-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y --no-install-recommends libfontconfig-dev libgbm-dev libwayland-dev libxkbcommon-dev
       - name: Build
         run: cargo build --locked --release --target "${{ matrix.target }}"
       - name: Package

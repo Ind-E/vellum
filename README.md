@@ -44,13 +44,13 @@ Install the dependencies for your distribution:
 <summary>Arch dependencies</summary>
 
 ```sh
-sudo pacman -S --needed base-devel git rust wayland libxkbcommon fontconfig vulkan-icd-loader
+sudo pacman -S --needed base-devel git rust wayland libxkbcommon fontconfig mesa vulkan-icd-loader
 ```
 
 For a PKGBUILD:
 
 ```bash
-depends=('wayland' 'libxkbcommon' 'fontconfig' 'vulkan-icd-loader')
+depends=('wayland' 'libxkbcommon' 'fontconfig' 'mesa' 'vulkan-icd-loader')
 makedepends=('cargo')
 ```
 
@@ -60,7 +60,7 @@ makedepends=('cargo')
 <summary>Debian 13+ dependencies</summary>
 
 ```sh
-sudo apt install build-essential git pkg-config rustup libwayland-dev libxkbcommon-dev libfontconfig-dev libvulkan1
+sudo apt install build-essential git pkg-config rustup libwayland-dev libxkbcommon-dev libfontconfig-dev libgbm-dev libvulkan1
 rustup default stable
 ```
 
@@ -70,7 +70,7 @@ rustup default stable
 <summary>Fedora dependencies</summary>
 
 ```sh
-sudo dnf install cargo gcc git pkgconf-pkg-config wayland-devel libxkbcommon-devel fontconfig-devel vulkan-loader
+sudo dnf install cargo gcc git pkgconf-pkg-config wayland-devel libxkbcommon-devel fontconfig-devel mesa-libgbm-devel vulkan-loader
 ```
 
 </details>

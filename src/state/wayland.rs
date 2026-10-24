@@ -10,9 +10,11 @@ use wayland_client::protocol::wl_pointer::WlPointer;
 use wayland_client::protocol::wl_region::WlRegion;
 use wayland_client::protocol::wl_registry::WlRegistry;
 use wayland_client::protocol::wl_seat::WlSeat;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, delegate_noop};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_manager_v1::WpCursorShapeManagerV1;
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
+use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1;
 use wayland_protocols::wp::tablet::zv2::client::zwp_tablet_manager_v2::ZwpTabletManagerV2;
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3;
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::ZwpTextInputV3;
@@ -31,6 +33,8 @@ pub(super) struct WaylandState {
     pub(super) display: WlDisplay,
     pub(super) registry: WlRegistry,
     pub(super) compositor: WlCompositor,
+    pub(super) subcompositor: Option<WlSubcompositor>,
+    pub(super) dmabuf: Option<ZwpLinuxDmabufV1>,
     _seat: WlSeat,
     pub(super) layer_shell: ZwlrLayerShellV1,
     pub(super) outputs: BTreeMap<OutputId, Output>,
@@ -75,6 +79,12 @@ impl State {
             .bind::<ZxdgOutputManagerV1, _, _>(&qhandle, 1..=3, ())
             .ok();
         let viewporter = globals.bind::<WpViewporter, _, _>(&qhandle, 1..=1, ()).ok();
+        let subcompositor = globals
+            .bind::<WlSubcompositor, _, _>(&qhandle, 1..=1, ())
+            .ok();
+        let dmabuf = globals
+            .bind::<ZwpLinuxDmabufV1, _, _>(&qhandle, 3..=3, ())
+            .ok();
         let fractional_scale_manager = viewporter.as_ref().and_then(|_| {
             globals
                 .bind::<WpFractionalScaleManagerV1, _, _>(&qhandle, 1..=1, ())
@@ -113,6 +123,8 @@ impl State {
                 display,
                 registry: globals.registry().clone(),
                 compositor,
+                subcompositor,
+                dmabuf,
                 _seat: seat,
                 layer_shell,
                 outputs: BTreeMap::new(),
@@ -173,3 +185,6 @@ delegate_noop!(State: ignore WpFractionalScaleManagerV1);
 delegate_noop!(State: ignore ZxdgOutputManagerV1);
 delegate_noop!(State: ignore ZwlrLayerShellV1);
 delegate_noop!(State: ignore WpCursorShapeManagerV1);
+
+delegate_noop!(State: ignore WlSubcompositor);
+delegate_noop!(State: ignore ZwpLinuxDmabufV1);

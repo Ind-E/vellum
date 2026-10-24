@@ -260,6 +260,7 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         for output in self.wayland.outputs.values_mut() {
+            output.frozen_surface.take();
             output.wgpu.take();
         }
         self.gpu.take();

@@ -3,8 +3,15 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use wayland_client::protocol::wl_callback::WlCallback;
+use wayland_client::protocol::{
+    wl_buffer::WlBuffer, wl_subsurface::WlSubsurface, wl_surface::WlSurface,
+};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
-use wlr_capture::wl::{CapturedImage, Client, Frame as CapturedFrame, Protocol};
+use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::{
+    self, Flags, ZwpLinuxBufferParamsV1,
+};
+use wayland_protocols::wp::viewporter::client::wp_viewport::WpViewport;
+use wlr_capture::wl::{Client, Frame as CapturedFrame, Protocol};
 
 use super::{DrawOn, OutputId, State};
 
@@ -13,7 +20,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 enum Capture {
     Prepared,
-    Image(OutputId, CapturedImage),
+    Image(OutputId, CapturedFrame),
 }
 
 pub(super) struct Freeze {
@@ -41,6 +48,7 @@ struct Frame {
     hidden: bool,
     presented: bool,
     ready: bool,
+    received: bool,
 }
 
 // The library owns its Wayland queue and blocks while negotiating constraints.
@@ -51,12 +59,16 @@ fn capture(
     events: &Sender<Result<Capture, String>>,
     start: Receiver<()>,
     deadline: Instant,
+    use_dmabuf: bool,
 ) -> Result<(), String> {
     let mut client = Client::connect().map_err(|error| error.to_string())?;
     if client.protocol() != Protocol::ImageCopyCapture {
         return Err(
             "compositor does not support ext-image-copy-capture with output sources".into(),
         );
+    }
+    if !use_dmabuf {
+        client.disable_gpu();
     }
     let mut sessions = Vec::with_capacity(outputs.len());
     for (id, name) in outputs {
@@ -95,10 +107,7 @@ fn capture(
             };
             let (_, output) = sessions.swap_remove(index);
             client.close_session(&session);
-            let CapturedFrame::Shm(image) = frame else {
-                return Err("capture returned an unexpected GPU buffer".into());
-            };
-            if events.send(Ok(Capture::Image(output, image))).is_err() {
+            if events.send(Ok(Capture::Image(output, frame))).is_err() {
                 return Ok(());
             }
         }
@@ -200,10 +209,13 @@ impl State {
         let deadline = Instant::now() + CAPTURE_TIMEOUT;
         let (events_tx, events) = mpsc::channel();
         let (start, start_rx) = mpsc::channel();
+        let use_dmabuf = self.wayland.dmabuf.is_some()
+            && self.wayland.subcompositor.is_some()
+            && self.wayland.viewporter.is_some();
         match std::thread::Builder::new()
             .name("screen capture".into())
             .spawn(move || {
-                if let Err(error) = capture(outputs, &events_tx, start_rx, deadline) {
+                if let Err(error) = capture(outputs, &events_tx, start_rx, deadline, use_dmabuf) {
                     let _ = events_tx.send(Err(error));
                 }
             }) {
@@ -228,11 +240,8 @@ impl State {
             self.start_freeze();
         } else if matches!(self.freeze.phase, Phase::Frozen) && self.draw_on == DrawOn::Current {
             for (&id, output) in &mut self.wayland.outputs {
-                if self.selected_output != Some(id)
-                    && let Some(wgpu) = &mut output.wgpu
-                    && wgpu.is_frozen()
-                {
-                    wgpu.clear_frozen_background();
+                if self.selected_output != Some(id) && output.is_frozen() {
+                    output.clear_frozen_background();
                     self.draw.damage(id);
                 }
             }
@@ -248,11 +257,8 @@ impl State {
         };
         let mut damaged = Vec::new();
         for (&id, output) in &mut self.wayland.outputs {
-            let Some(wgpu) = &mut output.wgpu else {
-                continue;
-            };
-            if wgpu.is_frozen() || frames.contains_key(&id) {
-                wgpu.clear_frozen_background();
+            if output.is_frozen() || frames.contains_key(&id) {
+                output.clear_frozen_background();
                 self.draw.damage(id);
                 damaged.push(id);
             }
@@ -317,16 +323,59 @@ impl State {
                 let frame = frames
                     .get_mut(&output)
                     .ok_or("capture output disappeared")?;
-                let wgpu = self
-                    .wayland
-                    .outputs
-                    .get_mut(&output)
-                    .unwrap()
-                    .wgpu
-                    .as_mut()
-                    .unwrap();
-                wgpu.set_frozen_background([image.width, image.height], &image.rgba)?;
-                frame.ready = true;
+                frame.received = true;
+                match image {
+                    CapturedFrame::Shm(image) => {
+                        let wgpu = self
+                            .wayland
+                            .outputs
+                            .get_mut(&output)
+                            .unwrap()
+                            .wgpu
+                            .as_mut()
+                            .unwrap();
+                        wgpu.set_frozen_background([image.width, image.height], &image.rgba)?;
+                        frame.ready = true;
+                        log::debug!(
+                            "frozen output {output}: shared memory {}x{}",
+                            image.width,
+                            image.height
+                        );
+                    }
+                    CapturedFrame::Dmabuf(image) => {
+                        let params = self
+                            .wayland
+                            .dmabuf
+                            .as_ref()
+                            .unwrap()
+                            .create_params(&self.qhandle, (self.freeze.generation, output));
+                        for (index, plane) in image.planes.iter().enumerate() {
+                            use std::os::fd::AsFd;
+                            params.add(
+                                plane.fd.as_fd(),
+                                index as u32,
+                                plane.offset,
+                                plane.stride,
+                                (image.modifier >> 32) as u32,
+                                image.modifier as u32,
+                            );
+                        }
+                        params.create(
+                            image.width as i32,
+                            image.height as i32,
+                            image.fourcc,
+                            Flags::empty(),
+                        );
+                        log::debug!(
+                            "frozen output {output}: DMA-BUF {}x{}, {} planes, modifier {:#x}",
+                            image.width,
+                            image.height,
+                            image.planes.len(),
+                            image.modifier
+                        );
+                        return Ok(());
+                    }
+                }
                 self.draw.damage(output);
                 self.render(output);
                 Ok(())
@@ -356,6 +405,10 @@ impl State {
             return;
         };
         if frames.values().all(|frame| frame.ready) {
+            log::debug!(
+                "screen frozen in {:?}",
+                Instant::now().duration_since(*deadline - CAPTURE_TIMEOUT)
+            );
             self.freeze.phase = Phase::Frozen;
             if self.selected_output.is_some() {
                 self.freeze_output_selected();
@@ -364,7 +417,7 @@ impl State {
                 self.update_output_input();
             }
             self.request_render();
-        } else if disconnected {
+        } else if disconnected && frames.values().any(|frame| !frame.received) {
             self.fail_freeze("Screen freeze failed: capture worker stopped");
         } else if now >= *deadline {
             self.fail_freeze("Screen freeze timed out; returned to live drawing");
@@ -396,3 +449,113 @@ impl Dispatch<WlCallback, (u64, OutputId)> for State {
         }
     }
 }
+
+// The compositor samples the captured buffer beneath the transparent annotation
+// surface. Vellum never maps it or imports it into its Vulkan device.
+pub(super) struct FrozenSurface {
+    surface: WlSurface,
+    subsurface: WlSubsurface,
+    viewport: WpViewport,
+    buffer: Option<WlBuffer>,
+}
+
+impl FrozenSurface {
+    pub(super) fn is_frozen(&self) -> bool {
+        self.buffer.is_some()
+    }
+
+    pub(super) fn clear(&mut self) {
+        // Apply removal with the replacement parent frame, including when its
+        // presentation is delayed. Reuse the empty subsurface on the next freeze.
+        self.surface.attach(None, 0, 0);
+        self.surface.commit();
+        if let Some(buffer) = self.buffer.take() {
+            buffer.destroy();
+        }
+    }
+}
+
+impl Drop for FrozenSurface {
+    fn drop(&mut self) {
+        self.subsurface.destroy();
+        self.viewport.destroy();
+        self.surface.destroy();
+        if let Some(buffer) = self.buffer.take() {
+            buffer.destroy();
+        }
+    }
+}
+
+impl Dispatch<ZwpLinuxBufferParamsV1, (u64, OutputId)> for State {
+    fn event(
+        state: &mut Self,
+        params: &ZwpLinuxBufferParamsV1,
+        event: zwp_linux_buffer_params_v1::Event,
+        &(generation, output): &(u64, OutputId),
+        _: &Connection,
+        qhandle: &QueueHandle<Self>,
+    ) {
+        params.destroy();
+        let current = generation == state.freeze.generation
+            && matches!(&state.freeze.phase, Phase::Capturing { frames, .. }
+                if frames.get(&output).is_some_and(|frame| !frame.ready));
+        match event {
+            zwp_linux_buffer_params_v1::Event::Created { buffer } => {
+                if !current {
+                    buffer.destroy();
+                    return;
+                }
+                let parent = &mut state.wayland.outputs.get_mut(&output).unwrap();
+                if parent.frozen_surface.is_none() {
+                    let surface = state.wayland.compositor.create_surface(qhandle, output);
+                    let subsurface = state
+                        .wayland
+                        .subcompositor
+                        .as_ref()
+                        .unwrap()
+                        .get_subsurface(&surface, &parent.surface, qhandle, ());
+                    subsurface.place_below(&parent.surface);
+                    let viewport = state.wayland.viewporter.as_ref().unwrap().get_viewport(
+                        &surface,
+                        qhandle,
+                        (),
+                    );
+                    let empty = state.wayland.compositor.create_region(qhandle, ());
+                    surface.set_input_region(Some(&empty));
+                    empty.destroy();
+                    parent.frozen_surface = Some(FrozenSurface {
+                        surface,
+                        subsurface,
+                        viewport,
+                        buffer: None,
+                    });
+                }
+                let frozen = parent.frozen_surface.as_mut().unwrap();
+                frozen
+                    .viewport
+                    .set_destination(parent.logical_size[0] as i32, parent.logical_size[1] as i32);
+                frozen.surface.attach(Some(&buffer), 0, 0);
+                frozen.surface.damage(0, 0, i32::MAX, i32::MAX);
+                // Synchronized subsurfaces become visible with the next parent
+                // render, so the frozen desktop and annotations appear together.
+                frozen.surface.commit();
+                frozen.buffer = Some(buffer);
+                if let Phase::Capturing { frames, .. } = &mut state.freeze.phase {
+                    frames.get_mut(&output).unwrap().ready = true;
+                }
+                state.draw.damage(output);
+                state.render(output);
+                state.handle_freeze(Instant::now());
+            }
+            zwp_linux_buffer_params_v1::Event::Failed if current => {
+                state.fail_freeze("Screen freeze failed: compositor could not import DMA-BUF");
+            }
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(State, ZwpLinuxBufferParamsV1, [0 => (WlBuffer, ())]);
+}
+
+wayland_client::delegate_noop!(State: ignore WlBuffer);
+wayland_client::delegate_noop!(State: ignore WlSubsurface);
