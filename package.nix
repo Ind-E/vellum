@@ -62,8 +62,6 @@ rustPlatform.buildRustPackage {
       $out/share/elvish/lib/vellum.elv
     install -Dm644 "$outputDir"/completions/_vellum.ps1 \
       $out/share/powershell/vellum.Completion.ps1
-    install -Dm644 default-config.toml \
-      $out/share/doc/vellum/default-config.toml
   '';
 
   postFixup = ''

@@ -43,7 +43,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p "$PACKAGE/share/man/man1" "$PACKAGE/share/shell-completions"
-          cp README.md LICENSE default-config.toml "target/${{ matrix.target }}/release/vellum" "$PACKAGE"
+          cp README.md LICENSE "target/${{ matrix.target }}/release/vellum" "$PACKAGE"
 
           mapfile -d '' output_dirs < <(find "target/${{ matrix.target }}/release/build" -type d -path '*/vellum-*/out' \
             -exec test -f '{}/completions/vellum.bash' ';' -print0)

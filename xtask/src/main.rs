@@ -15,7 +15,7 @@ struct Arguments {
 
 #[derive(Subcommand)]
 enum Task {
-    /// Build and install Vellum, its default config, manual, and shell completions
+    /// Build and install Vellum, its manual, and shell completions
     Install {
         /// Installation prefix (default: ~/.local)
         #[arg(long)]
@@ -87,11 +87,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         install(&completions_dir.join(source), &root.join(destination))?;
     }
-    install(
-        &workspace.join("default-config.toml"),
-        &root.join("share/doc/vellum/default-config.toml"),
-    )?;
-
     println!(
         "Installed Vellum and its documentation to {}",
         root.display()
