@@ -1,12 +1,14 @@
 mod font;
 mod size;
+mod watch;
+
+pub(crate) use watch::Config;
 
 use font::FontConfig;
 pub(crate) use size::SizeRange;
 use size::{SizeRangeConfig, resolve_size_ranges};
 
 use crate::Rgba;
-use crate::cli::Cli;
 use crate::tool::Tool;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -359,15 +361,7 @@ pub(super) struct Settings {
 }
 
 impl Settings {
-    pub(super) fn load(cli: Cli) -> Result<Self, String> {
-        let file = if cli.no_config {
-            FileConfig::default()
-        } else if let Some(path) = &cli.config {
-            read_config(path)?
-        } else {
-            read_first_config(default_config_paths())?
-        };
-
+    fn resolve(file: FileConfig) -> Result<Self, String> {
         let size_range = file
             .size_range
             .resolve(&SizeRange::default())

@@ -105,7 +105,7 @@ impl Editor {
         }
     }
 
-    pub(in crate::draw) fn new(settings: crate::config::Settings) -> Self {
+    pub(in crate::draw) fn new(settings: &crate::config::Settings) -> Self {
         let default_tool_properties = ToolPropertySet::new(
             settings.stroke_size,
             settings.default_color[3],
@@ -146,19 +146,57 @@ impl Editor {
             },
             tool_properties,
             default_tool_properties,
-            size_ranges: settings.size_ranges,
-            steps: settings.steps,
-            stops: settings.stops,
+            size_ranges: settings.size_ranges.clone(),
+            steps: settings.steps.clone(),
+            stops: settings.stops.clone(),
             remember_last_tool: settings.remember_last_tool,
-            palette: settings.palette,
+            palette: settings.palette.clone(),
             cursor_visibility: settings.cursor.visible,
             tool_cursor_visibility: settings
                 .tool_defaults
-                .into_iter()
+                .iter()
                 .filter_map(|(tool, defaults)| {
-                    defaults.cursor.visible.map(|visible| (tool, visible))
+                    defaults.cursor.visible.map(|visible| (*tool, visible))
                 })
                 .collect(),
+        }
+    }
+
+    pub(in crate::draw) fn reload(
+        &mut self,
+        settings: &crate::config::Settings,
+        previous: &crate::config::Settings,
+    ) {
+        let next = Self::new(settings);
+        self.tool_properties.reload(
+            &self.default_tool_properties,
+            &next.default_tool_properties,
+            &settings.size_ranges,
+        );
+        self.default_tool_properties = next.default_tool_properties;
+        self.size_ranges = next.size_ranges;
+        self.steps = next.steps;
+        self.stops = next.stops;
+        self.remember_last_tool = next.remember_last_tool;
+        self.palette = next.palette;
+        self.cursor_visibility = next.cursor_visibility;
+        self.tool_cursor_visibility = next.tool_cursor_visibility;
+        self.picker = None;
+        if settings.default_color[..3] != previous.default_color[..3] {
+            self.style.color[..3].copy_from_slice(&settings.default_color[..3]);
+        }
+        if self.default_tool != settings.default_tool {
+            self.switch_tool(settings.default_tool);
+        }
+        self.default_tool = settings.default_tool;
+        self.sync_active_style();
+        if settings.text_font != previous.text_font {
+            for document in [&mut self.document, &mut self.other_document] {
+                for element in &mut document.elements {
+                    element.refresh_text_bounds();
+                }
+                document.history.refresh_text_bounds();
+            }
         }
     }
 

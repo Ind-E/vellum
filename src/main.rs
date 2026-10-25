@@ -52,7 +52,7 @@ fn run() -> Result<ExitCode, String> {
             ExitCode::from(1)
         });
     }
-    let settings = config::Settings::load(arguments)?;
+    let mut config = config::Config::new(arguments)?;
     let started = Instant::now();
     // JOURNAL_STREAM can be inherited after stderr was redirected. Match the
     // descriptor before emitting the journal's severity prefixes.
@@ -83,7 +83,9 @@ fn run() -> Result<ExitCode, String> {
             )
         })
         .init();
+    config.watch();
+    let settings = config.load()?;
     log::info!("Vellum {} starting", env!("CARGO_PKG_VERSION"));
-    event_loop::run(settings)?;
+    event_loop::run(settings, config)?;
     Ok(ExitCode::SUCCESS)
 }

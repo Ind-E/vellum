@@ -16,6 +16,24 @@ pub(super) struct History {
 }
 
 impl History {
+    pub(super) fn refresh_text_bounds(&mut self) {
+        for entry in self.undo.iter_mut().chain(&mut self.redo) {
+            match entry {
+                Entry::Remove(elements) => {
+                    for (_, element) in elements {
+                        element.refresh_text_bounds();
+                    }
+                }
+                Entry::Clear(elements) => {
+                    for element in elements {
+                        element.refresh_text_bounds();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     pub(super) fn record(&mut self, entry: Entry) {
         if self.undo.len() == LIMIT {
             self.undo.remove(0);

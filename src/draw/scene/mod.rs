@@ -190,6 +190,12 @@ pub struct Element {
 }
 
 impl Element {
+    pub(super) fn refresh_text_bounds(&mut self) {
+        if matches!(self.kind, ElementKind::Text { .. }) {
+            self.bounds = bounds_for(&self.kind, self.style);
+        }
+    }
+
     pub(super) fn new(id: ElementId, kind: ElementKind, style: Style) -> Self {
         let geometry = geometry(&kind, style);
         Self::with_geometry(id, kind, style, geometry)

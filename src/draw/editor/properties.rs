@@ -128,6 +128,32 @@ pub(super) struct ToolProperties {
 pub(super) struct ToolPropertySet([ToolProperties; Tool::SIZED.len()]);
 
 impl ToolPropertySet {
+    pub(super) fn reload(
+        &mut self,
+        previous: &Self,
+        next: &Self,
+        ranges: &std::collections::BTreeMap<Tool, SizeRange>,
+    ) {
+        for (index, tool) in Tool::SIZED.into_iter().enumerate() {
+            let properties = &mut self.0[index];
+            let previous = previous.0[index];
+            let next = next.0[index];
+            if previous.size != next.size {
+                properties.size = next.size;
+            }
+            properties.size = ranges[&tool].clamp(properties.size);
+            if previous.opacity != next.opacity {
+                properties.opacity = next.opacity;
+            }
+            if previous.roundness != next.roundness {
+                properties.roundness = next.roundness;
+            }
+            if previous.filled != next.filled {
+                properties.filled = next.filled;
+            }
+        }
+    }
+
     pub(super) fn new(
         stroke_size: f32,
         default_opacity: f32,

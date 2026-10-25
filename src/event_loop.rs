@@ -4,23 +4,39 @@ use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use wayland_client::backend::WaylandError;
 
 use crate::cli::Command;
-use crate::config::Settings;
+use crate::config::{Config, Settings};
 use crate::ipc::ControlSocket;
 use crate::{state, text};
 
 const MAX_SOCKET_MESSAGE: usize = 4096;
 
-pub(crate) fn run(settings: Settings) -> Result<(), String> {
-    text::init_text_font(settings.text_font.clone());
+pub(crate) fn run(mut settings: Settings, mut config: Config) -> Result<(), String> {
+    text::set_text_font(settings.text_font.clone());
     let control = ControlSocket::bind()?;
     let socket = &control.socket;
 
-    let (mut state, mut event_queue) = state::State::setup_wayland(settings)?;
+    let (mut state, mut event_queue) = state::State::setup_wayland(&settings)?;
+    let mut pending_settings = None;
 
     loop {
         event_queue
             .dispatch_pending(&mut state)
             .map_err(|error| format!("Wayland dispatch failed: {error}"))?;
+        if let Some(result) = config.reload(Instant::now()) {
+            match result {
+                Ok(settings) => pending_settings = Some(settings),
+                Err(error) => {
+                    log::warn!("config reload failed, keeping previous settings: {error}")
+                }
+            }
+        }
+        if state.can_reload()
+            && let Some(next) = pending_settings.take()
+        {
+            state.reload(&next, &settings);
+            settings = next;
+            log::info!("configuration reloaded");
+        }
         // Coalesce input, cursor and drawing changes before presenting.
         state.render_pending();
         if let Some(error) = state.fatal_error.take() {
@@ -36,14 +52,19 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
         let Some(read_guard) = event_queue.prepare_read() else {
             continue;
         };
-        let timeout = state.next_wakeup().map(|deadline| {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            Timespec {
-                tv_sec: remaining.as_secs() as _,
-                tv_nsec: remaining.subsec_nanos() as _,
-            }
-        });
-        let (wayland_ready, socket_ready) = {
+        let timeout = state
+            .next_wakeup()
+            .into_iter()
+            .chain(config.next_wakeup())
+            .min()
+            .map(|deadline| {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                Timespec {
+                    tv_sec: remaining.as_secs() as _,
+                    tv_nsec: remaining.subsec_nanos() as _,
+                }
+            });
+        let (wayland_ready, socket_ready, config_ready) = {
             let mut fds = [
                 PollFd::new(
                     &event_queue,
@@ -55,6 +76,10 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
                         },
                 ),
                 PollFd::new(socket, PollFlags::IN),
+                config.fd().map_or_else(
+                    || PollFd::new(socket, PollFlags::empty()),
+                    |fd| PollFd::new(fd, PollFlags::IN),
+                ),
             ];
             if let Err(error) = poll(&mut fds, timeout.as_ref()) {
                 if error == rustix::io::Errno::INTR {
@@ -65,6 +90,7 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
             (
                 fds[0].revents().contains(PollFlags::IN),
                 fds[1].revents().contains(PollFlags::IN),
+                fds[2].revents().contains(PollFlags::IN),
             )
         };
         if wayland_ready {
@@ -73,6 +99,10 @@ pub(crate) fn run(settings: Settings) -> Result<(), String> {
                 .map_err(|error| format!("Wayland read failed: {error}"))?;
         } else {
             drop(read_guard);
+        }
+
+        if config_ready {
+            config.changed();
         }
 
         if socket_ready {

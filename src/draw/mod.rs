@@ -147,7 +147,7 @@ impl DrawState {
         self.record(changed)
     }
 
-    pub(super) fn new(settings: crate::config::Settings) -> Self {
+    pub(super) fn new(settings: &crate::config::Settings) -> Self {
         let feedback_duration = settings.feedback_duration;
         let editor = Editor::new(settings);
         Self {
@@ -160,6 +160,18 @@ impl DrawState {
             tool_cursor: None,
             previews: Vec::new(),
         }
+    }
+
+    pub(crate) fn reload(
+        &mut self,
+        settings: &crate::config::Settings,
+        previous: &crate::config::Settings,
+    ) {
+        self.editor.reload(settings, previous);
+        self.feedback_duration = settings.feedback_duration;
+        self.feedback = None;
+        self.tool_cursor = None;
+        self.record(true);
     }
 
     pub(crate) fn activate(&mut self) -> bool {

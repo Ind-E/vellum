@@ -1,13 +1,13 @@
 //! Font discovery, shaping and metrics shared by editing and rendering.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
-use std::sync::OnceLock;
 
 use parley::{Alignment, FontContext, Layout, LayoutContext, LineHeight, StyleProperty};
 
 const LINE_HEIGHT_SCALE: f32 = 1.25;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TextFont {
     pub family: Vec<parley::style::FontFamilyName<'static>>,
     pub weight: parley::style::FontWeight,
@@ -15,22 +15,29 @@ pub(crate) struct TextFont {
     pub features: Vec<parley::style::FontFeature>,
 }
 
-// Font preferences are fixed at startup, before any layout caches are created.
-static TEXT_FONT: OnceLock<TextFont> = OnceLock::new();
+thread_local! {
+    static TEXT_FONT: RefCell<Option<TextFont>> = const { RefCell::new(None) };
+}
 
-pub(crate) fn init_text_font(font: TextFont) {
-    TEXT_FONT.set(font).expect("text font initialized once");
+pub(crate) fn set_text_font(font: TextFont) {
+    TEXT_FONT.set(Some(font));
 }
 
 pub(crate) fn text_styles() -> [StyleProperty<'static, ()>; 5] {
-    let font = TEXT_FONT.get().expect("text font initialized at startup");
-    [
-        StyleProperty::FontFamily(font.family.as_slice().into()),
-        StyleProperty::FontWeight(font.weight),
-        StyleProperty::FontStyle(font.style),
-        StyleProperty::FontFeatures(font.features.as_slice().into()),
-        StyleProperty::LineHeight(LineHeight::FontSizeRelative(LINE_HEIGHT_SCALE)),
-    ]
+    TEXT_FONT.with_borrow(|font| {
+        let font = font.as_ref().expect("text font initialized at startup");
+        [
+            StyleProperty::FontFamily(parley::style::FontFamily::List(Cow::Owned(
+                font.family.clone(),
+            ))),
+            StyleProperty::FontWeight(font.weight),
+            StyleProperty::FontStyle(font.style),
+            StyleProperty::FontFeatures(parley::style::FontFeatures::List(Cow::Owned(
+                font.features.clone(),
+            ))),
+            StyleProperty::LineHeight(LineHeight::FontSizeRelative(LINE_HEIGHT_SCALE)),
+        ]
+    })
 }
 
 thread_local! {

@@ -307,6 +307,10 @@ pub(super) struct TextState {
 }
 
 impl TextState {
+    pub(super) fn invalidate_layouts(&mut self) {
+        self.buffers.clear();
+    }
+
     pub(super) fn append_to_scene(
         &mut self,
         target: &mut TextTarget<'_>,

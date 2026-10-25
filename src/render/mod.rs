@@ -43,6 +43,10 @@ pub(crate) struct WgpuState {
 }
 
 impl WgpuState {
+    pub(crate) fn invalidate_text_layouts(&mut self) {
+        self.text.invalidate_layouts();
+    }
+
     pub(crate) fn size(&self) -> [u32; 2] {
         [self.surface_config.width, self.surface_config.height]
     }

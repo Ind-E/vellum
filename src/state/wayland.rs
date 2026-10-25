@@ -50,7 +50,7 @@ pub(super) struct WaylandState {
 
 impl State {
     pub fn setup_wayland(
-        settings: crate::config::Settings,
+        settings: &crate::config::Settings,
     ) -> Result<(Self, EventQueue<Self>), String> {
         let connection = Connection::connect_to_env()
             .map_err(|error| format!("could not connect to Wayland: {error}"))?;

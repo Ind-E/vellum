@@ -60,6 +60,51 @@ pub(crate) struct State {
 }
 
 impl State {
+    pub(crate) fn can_reload(&self) -> bool {
+        !self.pointer.input_grab_active()
+            && !self.tablet.input_grab_active()
+            && !self.draw.is_editing_text()
+            && !self.freeze.capturing()
+    }
+
+    pub(crate) fn reload(
+        &mut self,
+        settings: &crate::config::Settings,
+        previous: &crate::config::Settings,
+    ) {
+        if self.draw_on != settings.draw_on {
+            self.stop_freeze(false);
+            self.draw_on = settings.draw_on;
+            self.selected_output = if self.draw_on == DrawOn::Current {
+                self.input_output.or(self.keyboard_output)
+            } else {
+                None
+            };
+        }
+        if settings.annotations_visible != previous.annotations_visible {
+            self.annotations_visible = settings.annotations_visible;
+        }
+        if settings.whiteboard_color != previous.whiteboard_color {
+            self.whiteboard_color = settings.whiteboard_color;
+        }
+        self.clear_on_escape = settings.clear_on_escape;
+        self.freeze.on_activate = settings.freeze_on_activate;
+        self.keyboard.cancel_repeat();
+        self.keyboard.reset_compose();
+        if settings.text_font != previous.text_font {
+            crate::text::set_text_font(settings.text_font.clone());
+            for output in self.wayland.outputs.values_mut() {
+                if let Some(wgpu) = &mut output.wgpu {
+                    wgpu.invalidate_text_layouts();
+                }
+            }
+        }
+        self.draw.reload(settings, previous);
+        self.update_output_input();
+        self.damage_presentation();
+        self.refresh_cursor();
+    }
+
     pub(crate) fn toggle_input(&mut self) {
         self.set_input_active(!self.is_active());
     }
