@@ -11,7 +11,7 @@
       (system: f system nixpkgs.legacyPackages.${system});
   in {
     packages = eachSystem (system: pkgs: {
-      vellum = pkgs.callPackage ./nix/package.nix {};
+      vellum = pkgs.callPackage ./package.nix {};
       default = self.packages.${system}.vellum;
     });
 
@@ -35,8 +35,5 @@
         ];
       };
     });
-
-    homeModules.default = import ./nix/home-manager.nix {inherit self;};
-    nixosModules.default = import ./nix/nixos.nix {inherit self;};
   };
 }

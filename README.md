@@ -12,31 +12,11 @@ Vellum requires a Wayland compositor that implements [`wlr-layer-shell`](https:/
 
 ## Installation
 
-### NixOS and Home Manager
+### NixOS
 
-Add Vellum to your flake inputs:
+See the [NixOS options](https://search.nixos.org/options?channel=unstable&query=vellum&type=options).
 
-```nix
-inputs.vellum.url = "github:greyxp1/vellum";
-```
-
-Import and enable the module in your NixOS or Home Manager configuration:
-
-```nix
-{inputs, ...}: {
-  # Use homeModules.default for Home Manager.
-  imports = [inputs.vellum.nixosModules.default];
-  services.vellum.enable = true;
-
-  # Optionally add cache settings for pre-built binaries.
-  nix.settings = {
-    substituters = ["https://vellum.cachix.org"];
-    trusted-public-keys = ["vellum.cachix.org-1:gUB2bSe5JrLoUCOhwM/VwiIKJBwRTBQ5HVhCLaw9vKk="];
-  };
-}
-```
-
-### Building and installing from source
+### From source
 
 Install the dependencies for your distribution:
 
@@ -45,13 +25,6 @@ Install the dependencies for your distribution:
 
 ```sh
 sudo pacman -S --needed base-devel git rust wayland libxkbcommon fontconfig mesa vulkan-icd-loader
-```
-
-For a PKGBUILD:
-
-```bash
-depends=('wayland' 'libxkbcommon' 'fontconfig' 'mesa' 'vulkan-icd-loader')
-makedepends=('cargo')
 ```
 
 </details>
@@ -75,7 +48,7 @@ sudo dnf install cargo gcc git pkgconf-pkg-config wayland-devel libxkbcommon-dev
 
 </details>
 
-Then build and install Vellum:
+Build and install to `~/.local`:
 
 ```sh
 git clone https://github.com/greyxp1/vellum
@@ -85,10 +58,14 @@ cargo xtask install
 
 ## Usage
 
-Start Vellum manually with `vellum &` or run it as a service:
+Run `vellum &` and bind `vellum toggle` to a compositor shortcut. For example, in niri:
+
+```kdl
+Mod+A { spawn "vellum" "toggle"; }
+```
 
 <details>
-<summary>systemd</summary>
+<summary>Running as a systemd user service</summary>
 
 Save this as `~/.config/systemd/user/vellum.service`:
 
@@ -107,19 +84,13 @@ Restart=on-failure
 WantedBy=graphical-session.target
 ```
 
-Enable the service and start it now:
+Enable the service:
 
 ```sh
 systemctl --user enable --now vellum.service
 ```
 
 </details>
-
-Then bind `vellum toggle` to a compositor shortcut. For example, in niri:
-
-```kdl
-Mod+A { spawn "vellum" "toggle"; }
-```
 
 ## Controls
 
